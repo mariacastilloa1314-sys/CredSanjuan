@@ -380,12 +380,17 @@ function App(){
 
   async function crearPrestamo(data){
     setDbError(null);
+
     // 1. Guardar préstamo
     const{data:loan,error:e1}=await db.from('prestamos').insert({
-      cliente:data.cliente,garante:data.garante||'',referencia:data.referencia||'',
-      cliente_externo:data.clienteExterno,monto:N(data.monto),
-      tasa:N(data.tasa),// ya viene como decimal 0.06
-      tipo:data.tipo,cuotas:N(data.cuotas),
+      cliente:data.cliente,
+      garante:data.garante||'',
+      referencia:data.referencia||'',
+      cliente_externo:data.clienteExterno,
+      monto:N(data.monto),
+      tasa:N(data.tasa),
+      tipo:data.tipo,
+      cuotas:N(data.cuotas),
       desgravamen:N(data.desgravamen||0),
       gasto_operativo:N(data.gastoOperativo||0),
       fecha_prestamo:data.fechaPrestamo,
@@ -393,52 +398,37 @@ function App(){
     }).select().single();
 
     if(e1){
-      const msg='Error al guardar préstamo: '+e1.message+(e1.hint?' | '+e1.hint:'');
+      const msg='Error préstamo: '+e1.message;
       setDbError(msg);showToast(msg,'err');
       return false;
     }
 
-    // 2. Generar cronograma — insertar UNA fila de prueba primero
-    const rows=genCrono(data,loan.id);
-    const filaTest={
-      prestamo_id:loan.id,
-      cliente:loan.cliente||data.cliente,
-      n_cuota:rows[0].n_cuota,
-      fecha_vence:rows[0].fecha_vence,
-      capital_cuota:rows[0].capital_cuota,
-      interes_cuota:rows[0].interes_cuota,
-      desgravamen:rows[0].desgravamen,
-      cuota_base:rows[0].cuota_base,
-      tipo_pago:'NORMAL',
+    // 2. Insertar cronograma — solo columnas seguras
+    const rows=genCrono(data,loan.id).map(r=>({
+      prestamo_id:r.prestamo_id,
+      cliente:r.cliente,
+      n_cuota:r.n_cuota,
+      fecha_vence:r.fecha_vence,
+      capital_cuota:r.capital_cuota,
+      interes_cuota:r.interes_cuota,
+      desgravamen:r.desgravamen,
+      cuota_base:r.cuota_base,
+      tipo_pago:r.tipo_pago,
       monto_pagado:null,
       mora:null,
       fecha_pago:null,
-    };
-    const{data:testRow,error:eTest}=await db.from('cronograma').insert(filaTest).select().single();
-    if(eTest){
-      const msg='ERROR CRONOGRAMA: '+eTest.message+' | código: '+eTest.code+' | hint: '+(eTest.hint||'ninguno')+' | details: '+(eTest.details||'ninguno');
-      alert(msg);
+    }));
+
+    const{error:e2}=await db.from('cronograma').insert(rows);
+    if(e2){
+      const msg='Cronograma error: '+e2.message+' ['+e2.code+']'+(e2.hint?' '+e2.hint:'');
+      alert('ERROR: '+msg);
       setDbError(msg);showToast(msg,'err');
-      setLoans(p=>[loan,...p]);
-      return true;
-    }
-    // Insertar el resto de filas
-    const restRows=rows.slice(1);
-    let allRows=[testRow];
-    if(restRows.length>0){
-      const{data:newRows,error:e2}=await db.from('cronograma').insert(restRows).select();
-      if(e2){
-        const msg='Error insertando cuotas 2+: '+e2.message+' | '+e2.code;
-        alert(msg);setDbError(msg);
-      } else {
-        allRows=[testRow,...(newRows||[])];
-      }
     }
 
-    // 3. Actualizar estado local sin recargar
-    setLoans(p=>[loan,...p]);
-    setSched(p=>[...allRows,...p]);
-    showToast('✓ Préstamo #'+loan.id+' guardado con '+allRows.length+' cuotas');
+    // 3. Recargar TODO desde DB — garantiza que pantalla refleja realidad
+    await loadAll();
+    showToast('Préstamo guardado — '+N(data.cuotas)+' cuotas');
     return true;
   }
 
