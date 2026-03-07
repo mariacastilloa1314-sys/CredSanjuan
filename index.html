@@ -311,6 +311,7 @@ function Login({onLogin}){
   const[email,setEmail]=useState('');
   const[pass,setPass]=useState('');
   const[loading,setLoading]=useState(false);
+  const[saving,setSaving]=useState(false);
   const[msg,setMsg]=useState('');
   async function submit(){
     setMsg('');setLoading(true);
@@ -350,6 +351,7 @@ function App(){
   const[loans,setLoans]=useState([]);
   const[sched,setSched]=useState([]);
   const[loading,setLoading]=useState(false);
+  const[saving,setSaving]=useState(false);
   const[payingRow,setPayingRow]=useState(null);
   const[viewLoan,setViewLoan]=useState(null);
   const[toast,setToast]=useState(null);
@@ -385,76 +387,81 @@ function App(){
 
   async function crearPrestamo(data){
     setDbError(null);
-    // 1. Guardar préstamo
-    const{data:loan,error:e1}=await db.from('prestamos').insert({
-      cliente:data.cliente,
-      garante:data.garante||'',
-      referencia:data.referencia||'',
-      cliente_externo:data.clienteExterno,
-      monto:N(data.monto),
-      tasa:N(data.tasa),
-      tipo:data.tipo,
-      cuotas:N(data.cuotas),
-      desgravamen:N(data.desgravamen||0),
-      gasto_operativo:N(data.gastoOperativo||0),
-      fecha_prestamo:data.fechaPrestamo,
-      creado_por_email:user.email,
-    }).select().single();
+    setSaving(true);
 
-    if(e1){
-      const msg='Error préstamo: '+e1.message;
-      setDbError(msg);showToast(msg,'err');
-      return false;
-    }
+    // Obtener JWT real de la sesión (no usar anon key para escritura)
+    const{data:{session}}=await db.auth.getSession();
+    const token=session?.access_token||SKEY;
+    const headers={
+      'Content-Type':'application/json',
+      'apikey':SKEY,
+      'Authorization':'Bearer '+token,
+      'Prefer':'return=representation',
+    };
 
-    // 2. Insertar cronograma — solo columnas seguras
-    const rows=genCrono(data,loan.id).map(r=>({
-      prestamo_id:r.prestamo_id,
-      cliente:r.cliente,
-      n_cuota:r.n_cuota,
-      fecha_vence:r.fecha_vence,
-      capital_cuota:r.capital_cuota,
-      interes_cuota:r.interes_cuota,
-      desgravamen:r.desgravamen,
-      cuota_base:r.cuota_base,
-      tipo_pago:r.tipo_pago,
-      monto_pagado:null,
-      mora:null,
-      fecha_pago:null,
-    }));
-
-    // 3. Insertar cronograma con timeout de 8 segundos
-    let cronoOk=false;
+    // 1. Insertar préstamo
+    let loan=null;
     try{
-      const cronoPromise=db.from('cronograma').insert(rows);
-      const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error('TIMEOUT 8s')),8000));
-      const{error:e2}=await Promise.race([cronoPromise,timeoutPromise]);
-      if(e2){
-        alert('ERROR cronograma: '+e2.message+' [código:'+e2.code+'] hint:'+(e2.hint||'—'));
-        setDbError('Cronograma falló: '+e2.message);
-      } else {
-        cronoOk=true;
+      const r=await fetch(SURL+'/rest/v1/prestamos',{method:'POST',headers,
+        body:JSON.stringify({
+          cliente:data.cliente,garante:data.garante||'',
+          referencia:data.referencia||'',cliente_externo:data.clienteExterno,
+          monto:N(data.monto),tasa:N(data.tasa),tipo:data.tipo,
+          cuotas:N(data.cuotas),desgravamen:N(data.desgravamen||0),
+          gasto_operativo:N(data.gastoOperativo||0),
+          fecha_prestamo:data.fechaPrestamo,creado_por_email:user.email,
+        }),
+      });
+      const txt=await r.text();
+      let json; try{json=JSON.parse(txt);}catch(e){json=null;}
+      if(!r.ok){
+        const msg='Error préstamo HTTP '+r.status+': '+(json?.message||json?.error||txt);
+        setSaving(false);setDbError(msg);showToast(msg,'err');
+        alert('ERROR AL GUARDAR PRÉSTAMO:\n'+msg);return false;
+      }
+      loan=Array.isArray(json)?json[0]:json;
+      if(!loan?.id){
+        const msg='Préstamo sin ID — respuesta: '+JSON.stringify(json);
+        setSaving(false);setDbError(msg);alert('ERROR: '+msg);return false;
       }
     }catch(ex){
-      alert('EXCEPCIÓN cronograma: '+ex.message);
-      setDbError('Excepción: '+ex.message);
+      const msg='Excepción préstamo: '+ex.message;
+      setSaving(false);setDbError(msg);alert('ERROR: '+msg);return false;
     }
 
-    // 4. Actualizar estado local directamente — sin loadAll para evitar timeout
-    setLoans(p=>[loan,...p]);
-    if(cronoOk){
-      // Traer solo las cuotas del préstamo recién creado
-      const{data:nuevasCuotas}=await db.from('cronograma').select('*').eq('prestamo_id',loan.id).order('n_cuota');
-      if(nuevasCuotas&&nuevasCuotas.length>0){
-        setSched(p=>[...nuevasCuotas,...p]);
-        showToast('✓ Préstamo guardado con '+nuevasCuotas.length+' cuotas');
-      } else {
-        showToast('Préstamo guardado pero cuotas no se encontraron — revisa Supabase','warn');
+    // 2. Insertar cronograma completo de una vez
+    const rows=genCrono(data,loan.id).map(r=>({
+      prestamo_id:Number(loan.id),
+      cliente:String(data.cliente),
+      n_cuota:Number(r.n_cuota),
+      fecha_vence:String(r.fecha_vence),
+      capital_cuota:Number(r.capital_cuota),
+      interes_cuota:Number(r.interes_cuota),
+      desgravamen:Number(r.desgravamen),
+      cuota_base:Number(r.cuota_base),
+      tipo_pago:'NORMAL',
+      monto_pagado:null,mora:null,fecha_pago:null,
+    }));
+
+    try{
+      const r=await fetch(SURL+'/rest/v1/cronograma',{method:'POST',headers,body:JSON.stringify(rows)});
+      const txt=await r.text();
+      let json; try{json=JSON.parse(txt);}catch(e){json=null;}
+      if(!r.ok){
+        const msg='Error cronograma HTTP '+r.status+': '+(json?.message||json?.error||txt);
+        setDbError(msg);
+        alert('ERROR AL GUARDAR CRONOGRAMA:\n'+msg+'\n\nEl préstamo SÍ se guardó (ID:'+loan.id+') pero sin cuotas.');
       }
-    } else {
-      showToast('Préstamo guardado SIN cronograma — ver error arriba','warn');
+    }catch(ex){
+      const msg='Excepción cronograma: '+ex.message;
+      setDbError(msg);
+      alert('EXCEPCIÓN CRONOGRAMA: '+msg);
     }
-    setLoading(false);
+
+    // 3. Recargar todo y cerrar
+    await loadAll();
+    setSaving(false);
+    showToast('✓ Préstamo guardado');
     return true;
   }
 
@@ -527,7 +534,15 @@ function App(){
           <span style={{fontFamily:"'Fraunces',serif",color:'#fff',fontSize:15,fontWeight:700}}>Crédito San Juan</span>
           <div style={{width:40}}/>
         </div>
-        {loading&&<div style={{position:'fixed',top:14,right:14,background:'var(--dark)',color:'#fff',borderRadius:8,padding:'8px 16px',fontSize:12,zIndex:99,display:'flex',alignItems:'center',gap:8}}><div style={{width:14,height:14,border:'2px solid rgba(255,255,255,.3)',borderTop:'2px solid #fff',borderRadius:'50%',animation:'spin .8s linear infinite'}}/>Guardando...</div>}
+        {(loading||saving)&&<div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:998,background:'rgba(13,31,13,.55)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#fff',borderRadius:14,padding:'32px 40px',textAlign:'center',boxShadow:'0 12px 40px rgba(0,0,0,.25)',maxWidth:360}}>
+            <div style={{width:40,height:40,border:'3px solid #d4ede5',borderTop:'3px solid var(--teal2)',borderRadius:'50%',animation:'spin .9s linear infinite',margin:'0 auto 16px'}}/>
+            <div style={{fontFamily:"'Fraunces',serif",fontSize:17,fontWeight:700,color:'var(--ink)',marginBottom:8}}>{saving?'Guardando préstamo...':'Cargando datos...'}</div>
+            <div style={{fontSize:12.5,color:'var(--grey)',lineHeight:1.6}}>{saving?'Esto puede tomar hasta 2 minutos la primera vez.
+No cierres ni recargues la página.':'Conectando con Supabase...'}</div>
+            {saving&&<div style={{marginTop:16,fontSize:11,color:'#aaa'}}>Supabase Free inicia en frío — normal en primera operación del día</div>}
+          </div>
+        </div>}
         <div className="page">
           {dbError&&(
             <div className="err-box">
