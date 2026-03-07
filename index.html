@@ -376,10 +376,19 @@ function App(){
     setLoading(false);
   }
 
+  // Despierta Supabase antes de operaciones importantes
+  async function pingDB(){
+    await db.from('prestamos').select('id').limit(1);
+  }
+
   const showToast=(msg,type='ok')=>{setToast({msg,type});setTimeout(()=>setToast(null),4500);};
 
   async function crearPrestamo(data){
     setDbError(null);
+    setLoading(true);
+
+    // 0. Ping para despertar Supabase (cold start puede tardar 1-3 min sin esto)
+    await pingDB();
 
     // 1. Guardar préstamo
     const{data:loan,error:e1}=await db.from('prestamos').insert({
@@ -419,16 +428,38 @@ function App(){
       fecha_pago:null,
     }));
 
-    const{error:e2}=await db.from('cronograma').insert(rows);
-    if(e2){
-      const msg='Cronograma error: '+e2.message+' ['+e2.code+']'+(e2.hint?' '+e2.hint:'');
-      alert('ERROR: '+msg);
-      setDbError(msg);showToast(msg,'err');
+    // 3. Insertar cronograma con timeout de 8 segundos
+    let cronoOk=false;
+    try{
+      const cronoPromise=db.from('cronograma').insert(rows);
+      const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error('TIMEOUT 8s')),8000));
+      const{error:e2}=await Promise.race([cronoPromise,timeoutPromise]);
+      if(e2){
+        alert('ERROR cronograma: '+e2.message+' [código:'+e2.code+'] hint:'+(e2.hint||'—'));
+        setDbError('Cronograma falló: '+e2.message);
+      } else {
+        cronoOk=true;
+      }
+    }catch(ex){
+      alert('EXCEPCIÓN cronograma: '+ex.message);
+      setDbError('Excepción: '+ex.message);
     }
 
-    // 3. Recargar TODO desde DB — garantiza que pantalla refleja realidad
-    await loadAll();
-    showToast('Préstamo guardado — '+N(data.cuotas)+' cuotas');
+    // 4. Actualizar estado local directamente — sin loadAll para evitar timeout
+    setLoans(p=>[loan,...p]);
+    if(cronoOk){
+      // Traer solo las cuotas del préstamo recién creado
+      const{data:nuevasCuotas}=await db.from('cronograma').select('*').eq('prestamo_id',loan.id).order('n_cuota');
+      if(nuevasCuotas&&nuevasCuotas.length>0){
+        setSched(p=>[...nuevasCuotas,...p]);
+        showToast('✓ Préstamo guardado con '+nuevasCuotas.length+' cuotas');
+      } else {
+        showToast('Préstamo guardado pero cuotas no se encontraron — revisa Supabase','warn');
+      }
+    } else {
+      showToast('Préstamo guardado SIN cronograma — ver error arriba','warn');
+    }
+    setLoading(false);
     return true;
   }
 
@@ -501,7 +532,13 @@ function App(){
           <span style={{fontFamily:"'Fraunces',serif",color:'#fff',fontSize:15,fontWeight:700}}>Crédito San Juan</span>
           <div style={{width:40}}/>
         </div>
-        {loading&&<div style={{position:'fixed',top:14,right:14,background:'var(--dark)',color:'#fff',borderRadius:8,padding:'8px 16px',fontSize:12,zIndex:99}}>Cargando...</div>}
+        {loading&&<div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,.35)',zIndex:998,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#fff',borderRadius:14,padding:'28px 36px',textAlign:'center',boxShadow:'0 8px 32px rgba(0,0,0,.2)'}}>
+            <div style={{width:36,height:36,border:'3px solid #e0ebe0',borderTop:'3px solid var(--teal2)',borderRadius:'50%',animation:'spin .8s linear infinite',margin:'0 auto 14px'}}/>
+            <div style={{fontWeight:600,color:'var(--dark)',marginBottom:4}}>Conectando con servidor...</div>
+            <div style={{fontSize:12,color:'var(--grey)'}}>Supabase puede tardar hasta 30 segundos en despertar.<br/>Por favor no cierres ni recargues la página.</div>
+          </div>
+        </div>}
         <div className="page">
           {dbError&&(
             <div className="err-box">
