@@ -385,11 +385,6 @@ function App(){
 
   async function crearPrestamo(data){
     setDbError(null);
-    setLoading(true);
-
-    // 0. Ping para despertar Supabase (cold start puede tardar 1-3 min sin esto)
-    await pingDB();
-
     // 1. Guardar préstamo
     const{data:loan,error:e1}=await db.from('prestamos').insert({
       cliente:data.cliente,
@@ -532,13 +527,7 @@ function App(){
           <span style={{fontFamily:"'Fraunces',serif",color:'#fff',fontSize:15,fontWeight:700}}>Crédito San Juan</span>
           <div style={{width:40}}/>
         </div>
-        {loading&&<div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,.35)',zIndex:998,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{background:'#fff',borderRadius:14,padding:'28px 36px',textAlign:'center',boxShadow:'0 8px 32px rgba(0,0,0,.2)'}}>
-            <div style={{width:36,height:36,border:'3px solid #e0ebe0',borderTop:'3px solid var(--teal2)',borderRadius:'50%',animation:'spin .8s linear infinite',margin:'0 auto 14px'}}/>
-            <div style={{fontWeight:600,color:'var(--dark)',marginBottom:4}}>Conectando con servidor...</div>
-            <div style={{fontSize:12,color:'var(--grey)'}}>Supabase puede tardar hasta 30 segundos en despertar.<br/>Por favor no cierres ni recargues la página.</div>
-          </div>
-        </div>}
+        {loading&&<div style={{position:'fixed',top:14,right:14,background:'var(--dark)',color:'#fff',borderRadius:8,padding:'8px 16px',fontSize:12,zIndex:99,display:'flex',alignItems:'center',gap:8}}><div style={{width:14,height:14,border:'2px solid rgba(255,255,255,.3)',borderTop:'2px solid #fff',borderRadius:'50%',animation:'spin .8s linear infinite'}}/>Guardando...</div>}
         <div className="page">
           {dbError&&(
             <div className="err-box">
