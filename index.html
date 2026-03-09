@@ -837,12 +837,47 @@ function NuevoPrestamo({onCreate}){
               <button className="btn-ol btn-sm" style={{fontSize:11,color:'var(--grey)'}} onClick={async()=>{
                 const{data:{session}}=await db.auth.getSession();
                 const token=session?.access_token||SKEY;
+                const H={'Content-Type':'application/json','apikey':SKEY,'Authorization':'Bearer '+token,'Prefer':'return=representation'};
+                let log='=== DIAGNÓSTICO DB ===
+';
+                // Test 1: SELECT
                 try{
-                  const r=await fetch(SURL+'/rest/v1/cronograma?limit=1',{headers:{'apikey':SKEY,'Authorization':'Bearer '+token}});
+                  const r=await apiFetch(SURL+'/rest/v1/prestamos?limit=1',{headers:H},8000);
+                  log+='SELECT prestamos: HTTP '+r.status+'
+';
+                }catch(ex){log+='SELECT prestamos FALLÓ: '+ex.message+'
+';}
+                // Test 2: INSERT prestamo test
+                let testId=null;
+                try{
+                  const r=await apiFetch(SURL+'/rest/v1/prestamos',{method:'POST',headers:H,
+                    body:JSON.stringify({cliente:'__TEST__',monto:1,tasa:0.01,tipo:'MENSUAL',cuotas:1,fecha_prestamo:'2026-01-01',creado_por_email:'test@test.com'})
+                  },10000);
                   const txt=await r.text();
-                  alert('✓ DB OK — HTTP '+r.status+' — '+txt.substring(0,120));
-                }catch(ex){alert('❌ DB ERROR: '+ex.message);}
-              }}>Probar DB</button>
+                  log+='INSERT prestamos: HTTP '+r.status+' '+txt.substring(0,80)+'
+';
+                  if(r.ok){const j=JSON.parse(txt);testId=(Array.isArray(j)?j[0]:j)?.id;}
+                }catch(ex){log+='INSERT prestamos FALLÓ: '+ex.message+'
+';}
+                // Test 3: INSERT cronograma
+                if(testId){
+                  try{
+                    const r=await apiFetch(SURL+'/rest/v1/cronograma',{method:'POST',headers:H,
+                      body:JSON.stringify([{prestamo_id:testId,cliente:'__TEST__',n_cuota:1,fecha_vence:'2026-01-01',capital_cuota:1,interes_cuota:0.01,desgravamen:0,cuota_base:1.01,tipo_pago:'NORMAL'}])
+                    },10000);
+                    const txt=await r.text();
+                    log+='INSERT cronograma: HTTP '+r.status+' '+txt.substring(0,80)+'
+';
+                  }catch(ex){log+='INSERT cronograma FALLÓ: '+ex.message+'
+';}
+                  // Cleanup
+                  await fetch(SURL+'/rest/v1/cronograma?prestamo_id=eq.'+testId,{method:'DELETE',headers:H});
+                  await fetch(SURL+'/rest/v1/prestamos?id=eq.'+testId,{method:'DELETE',headers:H});
+                  log+='(Test limpiado)
+';
+                }
+                alert(log);
+              }}>🔍 Diagnóstico DB</button>
             </div>
           </div>
         </div>
