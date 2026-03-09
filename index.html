@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Crédito San Juan</title>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Fraunces:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -1005,6 +1005,8 @@ function CronogramaModal({loan,rows,onClose}){
   const totCap=rows.reduce((a,r)=>a+N(r.capital_cuota),0);
   const totInt=rows.reduce((a,r)=>a+N(r.interes_cuota),0);
   const totDeg=rows.reduce((a,r)=>a+N(r.desgravamen),0);
+  const hasGO=rows.some(r=>N(r.gasto_operativo)>0);
+  const hasDeg=rows.some(r=>N(r.desgravamen)>0);
 
   async function descargarImagen(){
     const el=modalRef.current;
@@ -1022,12 +1024,24 @@ function CronogramaModal({loan,rows,onClose}){
   function imprimir(){
     const el=modalRef.current;
     const w=window.open('','_blank');
-    w.document.write('<html><head><meta charset="UTF-8"><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:"DM Sans",sans-serif;font-size:12px;color:#111}'+
-    '.pm-header{background:linear-gradient(135deg,#0d2b1f 0%,#1B4F45 60%,#2d8a7a 100%);padding:24px 32px}.pm-logo-row{display:flex;align-items:center;gap:12px;margin-bottom:8px}.pm-logo-circle{width:42px;height:42px;border:1.5px solid #b8973a;border-radius:50%;display:flex;align-items:center;justify-content:center}.pm-brand{font-family:"Fraunces",serif;font-size:22px;font-weight:700;color:#fff}.pm-brand em{color:#d4ac44;font-style:italic}.pm-tagline{font-size:9px;color:rgba(255,255,255,.45);letter-spacing:.18em;text-transform:uppercase;margin-top:2px}.pm-doc-title{font-size:10px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.2em;text-transform:uppercase;margin-top:12px}.pm-doc-name{font-family:"Fraunces",serif;font-size:16px;color:#fff;font-weight:600;margin-top:2px}'+
-    '.pm-info-grid{display:grid;grid-template-columns:1fr 1fr;border-bottom:2px solid #f0f0f0}.pm-info-half{padding:14px 20px}.pm-info-half:first-child{border-right:1px solid #f0f0f0}.pm-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f7f7f7;font-size:12px}.pm-k{color:#777;font-weight:500}.pm-v{font-weight:600;color:#111;text-align:right}'+
-    '.pm-totals{display:grid;grid-template-columns:1fr 1fr;background:#0d2b1f}.pm-tot{padding:12px 20px;text-align:center;border-right:1px solid rgba(255,255,255,.1)}.pm-tot:last-child{border-right:none}.pm-tot-lbl{font-size:9px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.15em;margin-bottom:3px}.pm-tot-val{font-size:18px;font-weight:700;color:#fff;font-family:"Fraunces",serif}'+
-    'table{width:100%;border-collapse:collapse;font-size:11.5px}thead tr{background:#f5f8f5}thead th{padding:8px 10px;text-align:right;font-weight:700;color:#444;font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #e0e8e0}thead th:first-child{text-align:center;width:30px}thead th:nth-child(2){text-align:left}tbody td{padding:7px 10px;text-align:right;border-bottom:1px solid #f0f4f0;color:#333}tbody td:first-child{text-align:center;font-weight:700;color:#1B4F45;background:#f9fcf9}tbody td:nth-child(2){text-align:left}tbody tr:nth-child(even) td{background:#fafcfa}tbody tr:nth-child(even) td:first-child{background:#f5faf5}tfoot td{padding:8px 10px;text-align:right;background:#e8f0e8;font-weight:700;color:#1B4F45;border-top:2px solid #c0d4c0;font-size:11px}tfoot td:first-child{text-align:center}'+
-    '.pm-footer{padding:14px 20px;border-top:2px solid #f0f0f0;display:flex;justify-content:space-between;align-items:flex-end;font-size:10px;color:#999}.pm-firma{text-align:center}.pm-firma-line{width:140px;border-top:1px solid #bbb;margin:0 auto 4px;padding-top:5px}'+
+    w.document.write('<html><head><meta charset="UTF-8"><link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:"DM Sans",sans-serif;font-size:12px;color:#111;background:#fff}'+
+    '.pm-header{background:#1a1a2e;padding:28px 36px;border-bottom:3px solid #c9a84c}'+
+    '.pm-title-row{display:flex;align-items:flex-end;justify-content:space-between}'+
+    '.pm-main-title{font-family:"Playfair Display",serif;font-size:28px;font-weight:700;color:#fff;letter-spacing:.06em;text-transform:uppercase}'+
+    '.pm-subtitle{font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.25em;text-transform:uppercase;margin-top:4px}'+
+    '.pm-client-box{text-align:right}.pm-client-name{font-family:"Playfair Display",serif;font-size:15px;color:#c9a84c;font-weight:600}.pm-client-label{font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.15em;text-transform:uppercase;margin-bottom:3px}'+
+    '.pm-info-grid{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #e8e8e8;background:#fafafa}'+
+    '.pm-info-half{padding:16px 24px}.pm-info-half:first-child{border-right:1px solid #e8e8e8}'+
+    '.pm-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f2f2f2;font-size:12px}.pm-row:last-child{border-bottom:none}.pm-k{color:#888;font-weight:500}.pm-v{font-weight:600;color:#222;text-align:right}'+
+    '.pm-totals{display:grid;grid-template-columns:1fr 1fr;background:#1a1a2e;border-top:3px solid #c9a84c}'+
+    '.pm-tot{padding:16px 24px;text-align:center;border-right:1px solid rgba(255,255,255,.08)}.pm-tot:last-child{border-right:none}'+
+    '.pm-tot-lbl{font-size:8px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.2em;margin-bottom:5px}'+
+    '.pm-tot-val{font-family:"Playfair Display",serif;font-size:22px;font-weight:700;color:#c9a84c}'+
+    'table{width:100%;border-collapse:collapse;font-size:11.5px}'+
+    'thead tr{background:#1a1a2e}thead th{padding:9px 12px;text-align:right;font-weight:600;color:rgba(255,255,255,.7);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em}thead th:first-child{text-align:center;width:36px}thead th:nth-child(2){text-align:left}'+
+    'tbody td{padding:8px 12px;text-align:right;border-bottom:1px solid #f0f0f0;color:#333}tbody td:first-child{text-align:center;font-weight:700;color:#1a1a2e;background:#f8f8f8;font-family:"Playfair Display",serif}tbody td:nth-child(2){text-align:left}'+
+    'tbody tr:nth-child(even) td{background:#fafafa}tbody tr:nth-child(even) td:first-child{background:#f3f3f3}'+
+    'tfoot td{padding:9px 12px;text-align:right;background:#1a1a2e;color:#c9a84c;font-weight:700;font-size:11px;border-top:none}tfoot td:first-child{text-align:center;font-family:"Playfair Display",serif}'+
     '</style></head><body>'+el.innerHTML+'</body></html>');
     w.document.close();
     setTimeout(()=>{w.print();},800);
@@ -1039,83 +1053,97 @@ function CronogramaModal({loan,rows,onClose}){
     <div className="print-modal-bg" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div>
         <div className="pm-actions" style={{display:'flex',gap:10,marginBottom:12,justifyContent:'flex-end',flexWrap:'wrap'}}>
-          <button className="btn-ol" style={{background:'rgba(255,255,255,.9)',borderColor:'rgba(255,255,255,.3)',color:'#333',fontSize:12,padding:'7px 16px',borderRadius:8,cursor:'pointer',fontWeight:600}} onClick={onClose}>✕ Cerrar</button>
-          <button style={{background:'rgba(255,255,255,.9)',border:'1.5px solid rgba(255,255,255,.3)',color:'#333',fontSize:12,padding:'7px 16px',borderRadius:8,cursor:'pointer',fontWeight:600}} onClick={imprimir}>🖨 Imprimir / PDF</button>
-          <button style={{background:'#d4ac44',border:'none',color:'#0d2b1f',fontSize:12,padding:'7px 16px',borderRadius:8,cursor:'pointer',fontWeight:700}} onClick={descargarImagen}>⬇ Descargar imagen</button>
+          <button style={{background:'rgba(255,255,255,.9)',border:'1.5px solid rgba(255,255,255,.25)',color:'#333',fontSize:12,padding:'8px 18px',borderRadius:8,cursor:'pointer',fontWeight:600}} onClick={onClose}>✕ Cerrar</button>
+          <button style={{background:'rgba(255,255,255,.9)',border:'1.5px solid rgba(255,255,255,.25)',color:'#333',fontSize:12,padding:'8px 18px',borderRadius:8,cursor:'pointer',fontWeight:600}} onClick={imprimir}>🖨 Imprimir / PDF</button>
+          <button style={{background:'#c9a84c',border:'none',color:'#1a1a2e',fontSize:12,padding:'8px 18px',borderRadius:8,cursor:'pointer',fontWeight:700}} onClick={descargarImagen}>⬇ Descargar imagen</button>
         </div>
-        <div className="print-modal" ref={modalRef}>
-          <div className="pm-header">
-            <div className="pm-logo-row">
-              <div className="pm-logo-circle">
-                <svg viewBox="0 0 24 24" style={{width:20,height:20,fill:'#b8973a',stroke:'none'}}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22" fill="none" stroke="rgba(0,0,0,.4)" strokeWidth="1.5"/></svg>
-              </div>
+        <div className="print-modal" ref={modalRef} style={{fontFamily:"'DM Sans',sans-serif"}}>
+
+          {/* HEADER */}
+          <div style={{background:'#1a1a2e',padding:'28px 36px',borderBottom:'3px solid #c9a84c'}}>
+            <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between'}}>
               <div>
-                <div className="pm-brand">Crédito <em>San Juan</em></div>
-                <div className="pm-tagline">Soluciones financieras · San Juan</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:30,fontWeight:700,color:'#fff',letterSpacing:'.06em',textTransform:'uppercase',lineHeight:1}}>CRONOGRAMA</div>
+                <div style={{fontSize:9,color:'rgba(255,255,255,.4)',letterSpacing:'.25em',textTransform:'uppercase',marginTop:5}}>De pagos · Emisión {today}</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontSize:9,color:'rgba(255,255,255,.4)',letterSpacing:'.15em',textTransform:'uppercase',marginBottom:4}}>Titular</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,color:'#c9a84c',fontWeight:600}}>{loan.cliente}</div>
               </div>
             </div>
-            <div className="pm-doc-title">Documento generado el {today}</div>
-            <div className="pm-doc-name">Cronograma de Pagos — {loan.cliente}</div>
           </div>
 
-          <div className="pm-info-grid">
-            <div className="pm-info-half">
-              {[['Cliente',loan.cliente],['Garante',loan.garante||'—'],['Referido por',loan.referencia||'—'],['Cliente externo',loan.cliente_externo||'NO']].map(([k,v])=>(
-                <div key={k} className="pm-row"><span className="pm-k">{k}</span><span className="pm-v">{v}</span></div>
+          {/* INFO GRID */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',borderBottom:'1px solid #e8e8e8',background:'#fafafa'}}>
+            <div style={{padding:'16px 24px',borderRight:'1px solid #e8e8e8'}}>
+              {[['Garante',loan.garante||'—'],['Referido por',loan.referencia||'—'],['Cliente externo',loan.cliente_externo||'NO']].map(([k,v])=>(
+                <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid #f2f2f2',fontSize:12}}>
+                  <span style={{color:'#888',fontWeight:500}}>{k}</span>
+                  <span style={{fontWeight:600,color:'#222'}}>{v}</span>
+                </div>
               ))}
             </div>
-            <div className="pm-info-half">
-              {[['Monto del préstamo',fmt(loan.monto)],['Tasa de interés',(N(loan.tasa)*100).toFixed(1)+'% '+loan.tipo.toLowerCase()],['N° de cuotas',loan.cuotas+' cuotas'],['Fecha de inicio',fmtD(loan.fecha_prestamo)]].map(([k,v])=>(
-                <div key={k} className="pm-row"><span className="pm-k">{k}</span><span className="pm-v">{v}</span></div>
+            <div style={{padding:'16px 24px'}}>
+              {[['Fecha del préstamo',fmtD(loan.fecha_prestamo)],['Monto',fmt(loan.monto)],['Tasa de interés',(N(loan.tasa)*100).toFixed(1)+'% '+loan.tipo.toLowerCase()]].map(([k,v])=>(
+                <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid #f2f2f2',fontSize:12}}>
+                  <span style={{color:'#888',fontWeight:500}}>{k}</span>
+                  <span style={{fontWeight:600,color:'#222'}}>{v}</span>
+                </div>
               ))}
             </div>
           </div>
 
-          <div className="pm-totals">
-            <div className="pm-tot"><div className="pm-tot-lbl">Cuota mensual</div><div className="pm-tot-val">{fmt(cuota)}</div></div>
-            <div className="pm-tot"><div className="pm-tot-lbl">Total a pagar</div><div className="pm-tot-val">{fmt(totBase)}</div></div>
+          {/* TOTALS BAR */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',background:'#1a1a2e',borderTop:'none'}}>
+            <div style={{padding:'16px 24px',textAlign:'center',borderRight:'1px solid rgba(255,255,255,.08)'}}>
+              <div style={{fontSize:8,color:'rgba(255,255,255,.4)',textTransform:'uppercase',letterSpacing:'.2em',marginBottom:5}}>Cuota {loan.tipo?.toLowerCase()}</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:24,fontWeight:700,color:'#c9a84c'}}>{fmt(cuota)}</div>
+            </div>
+            <div style={{padding:'16px 24px',textAlign:'center'}}>
+              <div style={{fontSize:8,color:'rgba(255,255,255,.4)',textTransform:'uppercase',letterSpacing:'.2em',marginBottom:5}}>Total a pagar · {loan.cuotas} cuotas</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:24,fontWeight:700,color:'#c9a84c'}}>{fmt(totBase)}</div>
+            </div>
           </div>
 
-          <div style={{padding:'0'}}>
-            <table className="pm-table">
-              <thead><tr>
-                <th>#</th><th>Fecha de pago</th><th>Capital</th><th>Interés</th>
-                {rows.some(r=>N(r.desgravamen)>0)&&<th>Degrav.</th>}
-                {rows.some(r=>N(r.gasto_operativo)>0)&&<th>G.Oper.</th>}
-                <th>Cuota total</th>
-              </tr></thead>
-              <tbody>{rows.map(r=>(
-                <tr key={r.id}>
-                  <td>{r.n_cuota}</td>
-                  <td>{fmtD(r.fecha_vence)}</td>
-                  <td>{fmt(r.capital_cuota)}</td>
-                  <td>{fmt(r.interes_cuota)}</td>
-                  {rows.some(x=>N(x.desgravamen)>0)&&<td>{fmt(r.desgravamen)}</td>}
-                  {rows.some(x=>N(x.gasto_operativo)>0)&&<td>{fmt(r.gasto_operativo||0)}</td>}
-                  <td style={{fontWeight:700,color:'#1B4F45'}}>{fmt(r.cuota_base)}</td>
+          {/* TABLE */}
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead>
+              <tr style={{background:'#1a1a2e'}}>
+                <th style={{padding:'9px 12px',textAlign:'center',width:36,color:'rgba(255,255,255,.6)',fontSize:9,textTransform:'uppercase',letterSpacing:'.08em',fontWeight:600}}>#</th>
+                <th style={{padding:'9px 12px',textAlign:'left',color:'rgba(255,255,255,.6)',fontSize:9,textTransform:'uppercase',letterSpacing:'.08em',fontWeight:600}}>Fecha de pago</th>
+                <th style={{padding:'9px 12px',textAlign:'right',color:'rgba(255,255,255,.6)',fontSize:9,textTransform:'uppercase',letterSpacing:'.08em',fontWeight:600}}>Capital</th>
+                <th style={{padding:'9px 12px',textAlign:'right',color:'rgba(255,255,255,.6)',fontSize:9,textTransform:'uppercase',letterSpacing:'.08em',fontWeight:600}}>Interés</th>
+                {hasDeg&&<th style={{padding:'9px 12px',textAlign:'right',color:'rgba(255,255,255,.6)',fontSize:9,textTransform:'uppercase',letterSpacing:'.08em',fontWeight:600}}>Degrav.</th>}
+                {hasGO&&<th style={{padding:'9px 12px',textAlign:'right',color:'rgba(255,255,255,.6)',fontSize:9,textTransform:'uppercase',letterSpacing:'.08em',fontWeight:600}}>G.Oper.</th>}
+                <th style={{padding:'9px 12px',textAlign:'right',color:'rgba(255,255,255,.6)',fontSize:9,textTransform:'uppercase',letterSpacing:'.08em',fontWeight:600}}>Cuota total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r,i)=>(
+                <tr key={r.id} style={{background:i%2===0?'#fff':'#fafafa'}}>
+                  <td style={{padding:'8px 12px',textAlign:'center',fontFamily:"'Playfair Display',serif",fontWeight:700,color:'#1a1a2e',background:i%2===0?'#f8f8f8':'#f3f3f3',borderBottom:'1px solid #f0f0f0'}}>{r.n_cuota}</td>
+                  <td style={{padding:'8px 12px',textAlign:'left',borderBottom:'1px solid #f0f0f0',color:'#444'}}>{fmtD(r.fecha_vence)}</td>
+                  <td style={{padding:'8px 12px',textAlign:'right',borderBottom:'1px solid #f0f0f0',color:'#333'}}>{fmt(r.capital_cuota)}</td>
+                  <td style={{padding:'8px 12px',textAlign:'right',borderBottom:'1px solid #f0f0f0',color:'#333'}}>{fmt(r.interes_cuota)}</td>
+                  {hasDeg&&<td style={{padding:'8px 12px',textAlign:'right',borderBottom:'1px solid #f0f0f0',color:'#333'}}>{fmt(r.desgravamen)}</td>}
+                  {hasGO&&<td style={{padding:'8px 12px',textAlign:'right',borderBottom:'1px solid #f0f0f0',color:'#333'}}>{fmt(r.gasto_operativo||0)}</td>}
+                  <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:'#1a1a2e',borderBottom:'1px solid #f0f0f0'}}>{fmt(r.cuota_base)}</td>
                 </tr>
-              ))}</tbody>
-              <tfoot><tr>
-                <td colSpan={2}>TOTALES</td>
-                <td>{fmt(totCap)}</td><td>{fmt(totInt)}</td>
-                {rows.some(r=>N(r.desgravamen)>0)&&<td>{fmt(totDeg)}</td>}
-                {rows.some(r=>N(r.gasto_operativo)>0)&&<td>{fmt(rows.reduce((a,r)=>a+N(r.gasto_operativo||0),0))}</td>}
-                <td>{fmt(totBase)}</td>
-              </tr></tfoot>
-            </table>
-          </div>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{background:'#1a1a2e'}}>
+                <td style={{padding:'9px 12px',textAlign:'center',fontFamily:"'Playfair Display',serif",color:'#c9a84c',fontWeight:700}}>Σ</td>
+                <td style={{padding:'9px 12px',color:'rgba(255,255,255,.5)',fontSize:10,textTransform:'uppercase',letterSpacing:'.06em'}}>Totales</td>
+                <td style={{padding:'9px 12px',textAlign:'right',color:'#c9a84c',fontWeight:700}}>{fmt(totCap)}</td>
+                <td style={{padding:'9px 12px',textAlign:'right',color:'#c9a84c',fontWeight:700}}>{fmt(totInt)}</td>
+                {hasDeg&&<td style={{padding:'9px 12px',textAlign:'right',color:'#c9a84c',fontWeight:700}}>{fmt(totDeg)}</td>}
+                {hasGO&&<td style={{padding:'9px 12px',textAlign:'right',color:'#c9a84c',fontWeight:700}}>{fmt(rows.reduce((a,r)=>a+N(r.gasto_operativo||0),0))}</td>}
+                <td style={{padding:'9px 12px',textAlign:'right',color:'#c9a84c',fontWeight:700,fontSize:14}}>{fmt(totBase)}</td>
+              </tr>
+            </tfoot>
+          </table>
 
-          <div className="pm-footer">
-            <div>
-              <div style={{marginBottom:4,fontWeight:600,color:'#555',fontSize:11}}>Crédito San Juan</div>
-              <div>Este documento es informativo y no constituye contrato.</div>
-              <div>Generado el {today}</div>
-            </div>
-            <div className="pm-firma">
-              <div className="pm-firma-line">Firma del cliente</div>
-              <div>{loan.cliente}</div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -1390,68 +1418,81 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
 function ExportarExcel({loans,sched}){
   function exportar(){
     if(!window.XLSX){alert('XLSX no disponible');return;}
-    const XLSX=window.XLSX;
-    const wb=XLSX.utils.book_new();
+    const XL=window.XLSX;
+    const wb=XL.utils.book_new();
 
-    // Hoja 1: Préstamos
-    const prestamosData=loans.map(l=>{
+    // Construir datos
+    const rows=loans.map(l=>{
       const cuotas=sched.filter(r=>r.prestamo_id===l.id);
       const est=getEstPrestamo(cuotas);
       const cobrado=cuotas.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
-      return{
-        'ID':l.id,'Cliente':l.cliente,'Garante':l.garante||'','Referido por':l.referencia||'',
-        'Cliente externo':l.cliente_externo||'NO','Monto':N(l.monto),
-        'Tasa %':parseFloat((N(l.tasa)*100).toFixed(2)),'Tipo':l.tipo,
-        'N° Cuotas':l.cuotas,'Fecha inicio':fmtD(l.fecha_prestamo),
-        'Desgravamen':N(l.desgravamen||0),'G. Operativo':N(l.gasto_operativo||0),
-        'Total cobrado':parseFloat(cobrado.toFixed(2)),'Estado':est,
-        'Registrado por':l.creado_por_email||'','Fecha registro':l.created_at?fmtD(l.created_at.substring(0,10)):''
-      };
-    });
-    const ws1=XLSX.utils.json_to_sheet(prestamosData);
-    ws1['!cols']=[{wch:6},{wch:22},{wch:18},{wch:18},{wch:14},{wch:10},{wch:8},{wch:10},{wch:10},{wch:14},{wch:12},{wch:13},{wch:14},{wch:12},{wch:22},{wch:16}];
-    XLSX.utils.book_append_sheet(wb,ws1,'Préstamos');
-
-    // Hoja 2: Cronograma completo
-    const cronoData=sched.map(r=>{
-      const est=getEst(r);
-      return{
-        'Préstamo ID':r.prestamo_id,'Cliente':r.cliente,'N° Cuota':r.n_cuota,
-        'Fecha vence':fmtD(r.fecha_vence),'Capital':N(r.capital_cuota),
-        'Interés':N(r.interes_cuota),'Desgravamen':N(r.desgravamen),
-        'G. Operativo':N(r.gasto_operativo||0),'Cuota base':N(r.cuota_base),
-        'Mora':N(r.mora||0),'Tipo pago':r.tipo_pago||'',
-        'Monto pagado':r.monto_pagado?N(r.monto_pagado):'',
-        'Fecha pago':r.fecha_pago?fmtD(r.fecha_pago):'','Estado':est,
-        'Saldo':parseFloat(getSaldo(r).toFixed(2))
-      };
-    });
-    const ws2=XLSX.utils.json_to_sheet(cronoData);
-    ws2['!cols']=[{wch:12},{wch:22},{wch:10},{wch:14},{wch:10},{wch:10},{wch:12},{wch:12},{wch:12},{wch:8},{wch:16},{wch:13},{wch:14},{wch:12},{wch:10}];
-    XLSX.utils.book_append_sheet(wb,ws2,'Cronograma');
-
-    // Hoja 3: Resumen por cliente
-    const clientes={};
-    loans.forEach(l=>{
-      const cuotas=sched.filter(r=>r.prestamo_id===l.id);
-      const cobrado=cuotas.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
       const saldo=cuotas.reduce((a,r)=>a+getSaldo(r),0);
       const mora=cuotas.reduce((a,r)=>a+N(r.mora||0),0);
-      const k=l.cliente;
-      if(!clientes[k])clientes[k]={Cliente:k,Préstamos:0,'Total prestado':0,'Total cobrado':0,'Saldo pendiente':0,'Mora total':0};
-      clientes[k].Préstamos++;
-      clientes[k]['Total prestado']+=N(l.monto);
-      clientes[k]['Total cobrado']+=cobrado;
-      clientes[k]['Saldo pendiente']+=saldo;
-      clientes[k]['Mora total']+=mora;
+      return[l.id,l.cliente,l.garante||'',l.referencia||'',l.cliente_externo||'NO',
+        N(l.monto),parseFloat((N(l.tasa)*100).toFixed(2)),l.tipo,l.cuotas,
+        fmtD(l.fecha_prestamo),N(l.desgravamen||0),N(l.gasto_operativo||0),
+        parseFloat(cobrado.toFixed(2)),parseFloat(saldo.toFixed(2)),parseFloat(mora.toFixed(2)),
+        est,l.creado_por_email||''];
     });
-    const resumenData=Object.values(clientes).map(c=>({...c,'Total prestado':parseFloat(c['Total prestado'].toFixed(2)),'Total cobrado':parseFloat(c['Total cobrado'].toFixed(2)),'Saldo pendiente':parseFloat(c['Saldo pendiente'].toFixed(2)),'Mora total':parseFloat(c['Mora total'].toFixed(2))}));
-    const ws3=XLSX.utils.json_to_sheet(resumenData);
-    ws3['!cols']=[{wch:22},{wch:12},{wch:16},{wch:16},{wch:16},{wch:12}];
-    XLSX.utils.book_append_sheet(wb,ws3,'Resumen clientes');
 
+    const headers=['ID','Cliente','Garante','Referido por','Cliente externo',
+      'Monto (S/.)','Tasa %','Tipo','N° Cuotas','Fecha préstamo',
+      'Desgravamen','G. Operativo','Total cobrado','Saldo pendiente','Mora',
+      'Estado','Registrado por'];
+
+    const ws=XL.utils.aoa_to_sheet([headers,...rows]);
+
+    // Anchos de columna
+    ws['!cols']=[{wch:5},{wch:22},{wch:18},{wch:18},{wch:13},{wch:11},{wch:7},{wch:10},{wch:9},{wch:14},{wch:12},{wch:11},{wch:13},{wch:14},{wch:8},{wch:11},{wch:24}];
+
+    // Estilos de cabecera (fondo oscuro, texto blanco, negrita)
+    const headerStyle={font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'1A1A2E'}},alignment:{horizontal:'center',vertical:'center'},border:{bottom:{style:'medium',color:{rgb:'C9A84C'}}}};
+    headers.forEach((_,ci)=>{
+      const ref=XL.utils.encode_cell({r:0,c:ci});
+      if(!ws[ref])ws[ref]={t:'s',v:headers[ci]};
+      ws[ref].s=headerStyle;
+    });
+
+    // Estilos por fila — alternar + color estado
+    const estColors={'ACTIVO':'D1FAE5','EN CURSO':'DBEAFE','VENCIDO':'FEE2E2','CANCELADO':'F3F4F6'};
+    const estText={'ACTIVO':'065F46','EN CURSO':'1E40AF','VENCIDO':'991B1B','CANCELADO':'6B7280'};
+    rows.forEach((row,ri)=>{
+      const bg=ri%2===0?'FFFFFF':'F8F8FC';
+      row.forEach((_,ci)=>{
+        const ref=XL.utils.encode_cell({r:ri+1,c:ci});
+        if(!ws[ref])return;
+        const isEst=ci===15;
+        const estVal=row[15];
+        ws[ref].s={
+          fill:{fgColor:{rgb:isEst?(estColors[estVal]||'F3F4F6'):bg}},
+          font:{sz:10,bold:ci===1||ci===5,color:{rgb:isEst?(estText[estVal]||'374151'):(ci===1?'1A1A2E':'374151')}},
+          alignment:{horizontal:typeof row[ci]==='number'?'right':(ci===0?'center':'left'),vertical:'center'},
+          border:{bottom:{style:'thin',color:{rgb:'E5E7EB'}}}
+        };
+      });
+    });
+
+    // Fila de totales al final
+    const totMonto=rows.reduce((a,r)=>a+r[5],0);
+    const totCob=rows.reduce((a,r)=>a+r[12],0);
+    const totSaldo=rows.reduce((a,r)=>a+r[13],0);
+    const totMora=rows.reduce((a,r)=>a+r[14],0);
+    const totRow=['','TOTALES','','','',
+      parseFloat(totMonto.toFixed(2)),'','','','','','',
+      parseFloat(totCob.toFixed(2)),parseFloat(totSaldo.toFixed(2)),parseFloat(totMora.toFixed(2)),'',''];
+    XL.utils.sheet_add_aoa(ws,[totRow],{origin:-1});
+    const lastR=rows.length+1;
+    totRow.forEach((_,ci)=>{
+      const ref=XL.utils.encode_cell({r:lastR,c:ci});
+      if(!ws[ref])return;
+      ws[ref].s={fill:{fgColor:{rgb:'1A1A2E'}},font:{bold:true,color:{rgb:'C9A84C'},sz:10},alignment:{horizontal:typeof totRow[ci]==='number'?'right':(ci===1?'left':'center'),vertical:'center'}};
+    });
+
+    ws['!rows']=[{hpt:22},...rows.map(()=>({hpt:18})),{hpt:20}];
+
+    XL.utils.book_append_sheet(wb,ws,'Préstamos');
     const fecha=new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb,'CreditoSanJuan_'+fecha+'.xlsx');
+    XL.writeFile(wb,'CreditoSanJuan_'+fecha+'.xlsx');
   }
 
   const totPres=loans.reduce((a,l)=>a+N(l.monto),0);
@@ -1495,7 +1536,7 @@ function ExportarExcel({loans,sched}){
           </div>
           <button className="btn" style={{padding:'13px 32px',fontSize:14,display:'flex',alignItems:'center',gap:9}} onClick={exportar}>
             <svg viewBox="0 0 24 24" style={{width:16,height:16,stroke:'currentColor',fill:'none',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Descargar Excel — {loans.length} préstamos · {sched.length} cuotas
+            Descargar Excel — {loans.length} préstamos
           </button>
           {loans.length===0&&<div style={{marginTop:10,fontSize:12.5,color:'var(--grey)'}}>No hay datos aún — registra préstamos primero.</div>}
         </div>
