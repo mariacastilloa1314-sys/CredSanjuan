@@ -465,7 +465,9 @@ function App(){
     }
 
     // 2. INSERT cronograma (timeout 30s)
-    const rows=genCrono(data,loan.id).map(r=>({
+    // Normalizar: genCrono espera fecha_prestamo (snake) pero el form envía fechaPrestamo (camel)
+    const dataParaCrono={...data, fecha_prestamo: data.fechaPrestamo||data.fecha_prestamo};
+    const rows=genCrono(dataParaCrono,loan.id).map(r=>({
       prestamo_id:Number(loan.id),cliente:String(data.cliente),
       n_cuota:Number(r.n_cuota),fecha_vence:String(r.fecha_vence),
       capital_cuota:Number(r.capital_cuota),interes_cuota:Number(r.interes_cuota),
