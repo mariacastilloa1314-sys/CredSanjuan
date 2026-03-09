@@ -479,15 +479,11 @@ function App(){
       if(!r.ok){
         const msg='HTTP '+r.status+': '+(json?.message||json?.error||txt);
         setDbError(msg);
-        alert('⚠ CRONOGRAMA FALLÓ:\n'+msg+'
-
-Préstamo guardado (ID:'+loan.id+') pero sin cuotas.');
+        alert('⚠ CRONOGRAMA: '+msg+' — Préstamo guardado ID:'+loan.id);
       }
     }catch(ex){
       setDbError(ex.message);
-      alert('⚠ CRONOGRAMA FALLÓ:\n'+ex.message+'
-
-Préstamo guardado (ID:'+loan.id+') pero sin cuotas.');
+      alert('⚠ CRONOGRAMA: '+ex.message+' — Préstamo guardado ID:'+loan.id);
     }
 
     await loadAll();
@@ -569,8 +565,7 @@ Préstamo guardado (ID:'+loan.id+') pero sin cuotas.');
           <div style={{background:'#fff',borderRadius:14,padding:'32px 40px',textAlign:'center',boxShadow:'0 12px 40px rgba(0,0,0,.25)',maxWidth:360}}>
             <div style={{width:40,height:40,border:'3px solid #d4ede5',borderTop:'3px solid var(--teal2)',borderRadius:'50%',animation:'spin .9s linear infinite',margin:'0 auto 16px'}}/>
             <div style={{fontFamily:"'Fraunces',serif",fontSize:17,fontWeight:700,color:'var(--ink)',marginBottom:8}}>{saving?'Guardando préstamo...':'Cargando datos...'}</div>
-            <div style={{fontSize:12.5,color:'var(--grey)',lineHeight:1.6}}>{saving?'Esto puede tomar hasta 2 minutos la primera vez.
-No cierres ni recargues la página.':'Conectando con Supabase...'}</div>
+            <div style={{fontSize:12.5,color:'var(--grey)',lineHeight:1.6}}>{saving?'Esto puede tomar hasta 2 minutos. No cierres la página.':'Conectando con Supabase...'}</div>
             {saving&&<div style={{marginTop:16,fontSize:11,color:'#aaa'}}>Supabase Free inicia en frío — normal en primera operación del día</div>}
           </div>
         </div>}
@@ -845,8 +840,7 @@ function NuevoPrestamo({onCreate}){
                 try{
                   const r=await fetch(SURL+'/rest/v1/cronograma?limit=1',{headers:{'apikey':SKEY,'Authorization':'Bearer '+token}});
                   const txt=await r.text();
-                  alert('✓ DB OK — HTTP '+r.status+'
-'+txt.substring(0,120));
+                  alert('✓ DB OK — HTTP '+r.status+' — '+txt.substring(0,120));
                 }catch(ex){alert('❌ DB ERROR: '+ex.message);}
               }}>Probar DB</button>
             </div>
