@@ -1183,48 +1183,50 @@ function Prestamos({loans,sched,onDelete,onVer,onPagar}){
             const cuotas=sched.filter(r=>r.prestamo_id===l.id);
             const est=getEstPrestamo(cuotas);
             const s2=sig(l.id);
-            return<tr key={l.id}>{(()=>{
-              const pagadas=cuotas.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).length;
-              const saldo=cuotas.reduce((a,r)=>a+getSaldo(r),0);
-              const cobrado=cob(l.id);
-              const pct=l.cuotas>0?Math.round(pagadas/l.cuotas*100):0;
-              return(<>
-              <td style={{color:'var(--grey)',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>#{l.id}</td>
-              <td style={{minWidth:140}}>
-                <div style={{fontWeight:700,color:'var(--ink)',fontSize:13}}>{l.cliente}</div>
-                {l.garante&&<div style={{fontSize:11,color:'var(--grey)',marginTop:1}}>Gar: {l.garante}</div>}
-                {l.referencia&&<div style={{fontSize:10.5,color:'var(--teal)',marginTop:1}}>Ref: {l.referencia}</div>}
-              </td>
-              <td style={{fontWeight:700,color:'var(--dark)',whiteSpace:'nowrap'}}>{fmt(l.monto)}</td>
-              <td>
-                <span style={{fontSize:10,background:'var(--light)',color:'var(--dark)',borderRadius:4,padding:'2px 7px',fontWeight:700,display:'block',marginBottom:3}}>{l.tipo}</span>
-                <span style={{fontSize:11,color:'var(--grey)',fontWeight:600}}>{(N(l.tasa)*100).toFixed(1)}%</span>
-              </td>
-              <td style={{textAlign:'center'}}>
-                <div style={{fontWeight:700,fontSize:13,color:'var(--dark)'}}>{pagadas}<span style={{color:'var(--grey)',fontWeight:400}}>/{l.cuotas}</span></div>
-                <div style={{fontSize:9.5,color:'var(--grey)',letterSpacing:'.05em'}}>pagadas</div>
-              </td>
-              <td style={{minWidth:90}}>
-                <div style={{display:'flex',alignItems:'center',gap:6}}>
-                  <div style={{flex:1,height:5,background:'var(--border)',borderRadius:3,overflow:'hidden'}}>
-                    <div style={{height:'100%',width:pct+'%',background:pct===100?'var(--green)':'var(--teal2)',borderRadius:3,transition:'width .3s'}}/>
+            const pagadas=cuotas.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).length;
+            const saldo=cuotas.reduce((a,r)=>a+getSaldo(r),0);
+            const cobrado=cob(l.id);
+            const pct=l.cuotas>0?Math.round(pagadas/l.cuotas*100):0;
+            return(
+              <tr key={l.id}>
+                <td style={{color:'var(--grey)',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>#{l.id}</td>
+                <td style={{minWidth:130}}>
+                  <div style={{fontWeight:700,color:'var(--ink)',fontSize:13}}>{l.cliente}</div>
+                  {l.garante&&<div style={{fontSize:11,color:'var(--grey)',marginTop:1}}>Gar: {l.garante}</div>}
+                  {l.referencia&&<div style={{fontSize:10.5,color:'var(--teal)',marginTop:1}}>Ref: {l.referencia}</div>}
+                </td>
+                <td style={{fontWeight:700,color:'var(--dark)',whiteSpace:'nowrap'}}>{fmt(l.monto)}</td>
+                <td>
+                  <span style={{fontSize:10,background:'var(--light)',color:'var(--dark)',borderRadius:4,padding:'2px 7px',fontWeight:700,display:'block',marginBottom:3}}>{l.tipo}</span>
+                  <span style={{fontSize:11,color:'var(--grey)',fontWeight:600}}>{(N(l.tasa)*100).toFixed(1)}%</span>
+                </td>
+                <td style={{textAlign:'center'}}>
+                  <div style={{fontWeight:700,fontSize:13,color:'var(--dark)'}}>{pagadas}<span style={{color:'var(--grey)',fontWeight:400}}>/{l.cuotas}</span></div>
+                  <div style={{fontSize:9.5,color:'var(--grey)',letterSpacing:'.05em'}}>pagadas</div>
+                </td>
+                <td style={{minWidth:90}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}>
+                    <div style={{flex:1,height:5,background:'var(--border)',borderRadius:3,overflow:'hidden'}}>
+                      <div style={{height:'100%',width:pct+'%',background:pct===100?'var(--green)':'var(--teal2)',borderRadius:3}}/>
+                    </div>
+                    <span style={{fontSize:10.5,fontWeight:700,color:pct===100?'var(--green)':'var(--grey)',minWidth:28}}>{pct}%</span>
                   </div>
-                  <span style={{fontSize:10.5,fontWeight:700,color:pct===100?'var(--green)':'var(--grey)',minWidth:28}}>{pct}%</span>
-                </div>
-              </td>
-              <td style={{minWidth:110}}>
-                <div style={{fontWeight:700,color:'var(--green)',fontSize:12}}>{fmt(cobrado)}</div>
-                <div style={{fontSize:11,color:saldo>0?'var(--red)':'var(--grey)',fontWeight:saldo>0?600:400}}>Saldo: {fmt(saldo)}</div>
-              </td>
-              <td style={{color:'var(--grey)',fontSize:11,whiteSpace:'nowrap'}}>{fmtD(l.fecha_prestamo)}</td>
-              <td><Badge s={est}/></td>
-              </>);})()}
-              <td><div style={{display:'flex',gap:6,alignItems:'center'}}>
-                <button className="btn-ol btn-sm" onClick={()=>onVer(l)}>Ver</button>
-                {s2&&<button className="btn btn-sm" onClick={()=>onPagar(s2)}>Pagar</button>}
-                <button className="btn-del" onClick={()=>onDelete(l.id)}>×</button>
-              </div></td>
-            </tr>;
+                </td>
+                <td style={{minWidth:110}}>
+                  <div style={{fontWeight:700,color:'var(--green)',fontSize:12}}>{fmt(cobrado)}</div>
+                  <div style={{fontSize:11,color:saldo>0?'var(--red)':'var(--grey)',fontWeight:saldo>0?600:400}}>Saldo: {fmt(saldo)}</div>
+                </td>
+                <td style={{color:'var(--grey)',fontSize:11,whiteSpace:'nowrap'}}>{fmtD(l.fecha_prestamo)}</td>
+                <td><Badge s={est}/></td>
+                <td>
+                  <div style={{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
+                    <button className="btn-ol btn-sm" onClick={()=>onVer(l)}>Ver</button>
+                    {s2&&<button className="btn btn-sm" onClick={()=>onPagar(s2)}>Pagar</button>}
+                    <button className="btn-del" onClick={()=>onDelete(l.id)}>×</button>
+                  </div>
+                </td>
+              </tr>
+            );
           })}
         </tbody>
       </table></div></div>
