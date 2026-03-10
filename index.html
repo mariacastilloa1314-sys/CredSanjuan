@@ -139,29 +139,36 @@ tfoot td{padding:10px 13px;background:var(--light);font-weight:700;color:var(--d
   .mob-bar{display:flex!important}
   .page{padding:8px 8px 60px}
   .crono-info{grid-template-columns:1fr}
-  .kpi-grid{grid-template-columns:1fr 1fr!important;gap:8px}
-  .kpi{padding:11px 13px}
+  .kpi-grid{grid-template-columns:1fr 1fr!important;gap:7px}
+  .kpi{padding:10px 11px}
   .kpi-val{font-size:15px!important}
   .kpi-lbl{font-size:9px!important}
   .form-cols{grid-template-columns:1fr!important}
   .btn-row{flex-direction:column}
   .btn-row .btn,.btn-row .btn-ol{width:100%;text-align:center;justify-content:center}
   table{font-size:11px}
-  thead th{padding:6px 7px;font-size:9px}
-  tbody td,tfoot td{padding:6px 7px}
-  .c-bd{padding:10px}
-  .c-hd{padding:10px 14px}
-  .pg-ti{font-size:18px!important}
+  thead th{padding:5px 6px;font-size:9px}
+  tbody td,tfoot td{padding:5px 6px}
+  .c-bd{padding:9px}
+  .c-hd{padding:9px 13px}
+  .pg-ti{font-size:17px!important;margin-bottom:2px}
   .pg-ey{font-size:10px}
   .two-col{grid-template-columns:1fr!important}
-  .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -1px}
-  .print-modal-bg{padding:8px;align-items:flex-start}
+  .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .print-modal-bg{padding:6px;align-items:flex-start}
   .print-modal{font-size:11px}
-  .pm-actions{gap:6px}
-  .pm-actions button{font-size:11px!important;padding:7px 12px!important}
-  .card{border-radius:6px}
-  /* dashboard grids → stack */
-  .dash-row-2{grid-template-columns:1fr!important}
+  .pm-actions{gap:5px;flex-wrap:wrap}
+  .pm-actions button{font-size:11px!important;padding:7px 10px!important}
+  .card{border-radius:6px;margin-bottom:10px}
+  /* Force all inline grid styles to stack on mobile */
+  .dash-row-2{grid-template-columns:1fr!important;display:grid!important}
+  /* Target dashboard inline grids */
+  [style*="grid-template-columns:'1.6fr 1fr'"]{grid-template-columns:1fr!important}
+  [style*="grid-template-columns:'1fr 1.4fr'"]{grid-template-columns:1fr!important}
+  /* KPI strip → 2 col */
+  [style*="repeat(6,1fr)"]{grid-template-columns:1fr 1fr!important}
+  [style*="repeat(3,1fr)"]{grid-template-columns:1fr 1fr!important}
+  [style*="repeat(auto-fit"]{grid-template-columns:1fr 1fr!important}
 }
 @media(max-width:400px){
   .kpi-grid{grid-template-columns:1fr 1fr}
@@ -219,6 +226,16 @@ tfoot td{padding:10px 13px;background:var(--light);font-weight:700;color:var(--d
 <script type="text/babel">
 const SURL='https://wimkawjgvzcspcxyyibc.supabase.co';
 const SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpbWthd2pndnpjc3BjeHl5aWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MjU3NjUsImV4cCI6MjA4ODMwMTc2NX0.B3p0Bb3s7Fi5y0goUk2IX8e86_PFfyT99OY07Y_wq18';
+
+  // ── USUARIOS DEL SISTEMA ──────────────────────────────────────
+  // Agrega o cambia usuarios aquí. rol: 'admin' ve todo, 'user' solo opera.
+  const PASS_GLOBAL='credi2025#*';
+  const USUARIOS=[
+    {user:'Mcastillo', pass:PASS_GLOBAL, rol:'admin'},
+    {user:'Ipariona',  pass:PASS_GLOBAL, rol:'admin'},
+    {user:'Operador1', pass:PASS_GLOBAL, rol:'user'},
+  ];
+  // ─────────────────────────────────────────────────────────────
 const db=window.supabase.createClient(SURL,SKEY);
 window.XLSX=window.XLSX||null;
 const {useState,useEffect,useRef}=React;
@@ -385,43 +402,71 @@ function Donut({segs,total,cv,cl}){
 
 /* ══ LOGIN ══════════════════════════════════════════════════════ */
 function Login({onLogin}){
-  const[mode,setMode]=useState('login');
-  const[email,setEmail]=useState('');
+  const[username,setUsername]=useState('');
   const[pass,setPass]=useState('');
+  const[err,setErr]=useState('');
   const[loading,setLoading]=useState(false);
-  const[saving,setSaving]=useState(false);
-  const[msg,setMsg]=useState('');
-  async function submit(){
-    setMsg('');setLoading(true);
-    const res=await(mode==='login'?db.auth.signInWithPassword({email,password:pass}):db.auth.signUp({email,password:pass}));
-    if(res.error)setMsg(res.error.message);
-    else if(mode==='register')setMsg('✓ Cuenta creada. Inicia sesión.');
-    else onLogin(res.data.user);
-    setLoading(false);
+  const[showPass,setShowPass]=useState(false);
+
+  function submit(){
+    setErr('');
+    const u=username.trim();
+    if(!u||!pass){setErr('Ingresa usuario y contraseña');return;}
+    setLoading(true);
+    setTimeout(()=>{
+      const found=USUARIOS.find(x=>x.user.toLowerCase()===u.toLowerCase()&&x.pass===pass);
+      if(found){
+        // Store session in sessionStorage (clears on browser close)
+        sessionStorage.setItem('csj_user',JSON.stringify(found));
+        onLogin(found);
+      } else {
+        setErr('Usuario o contraseña incorrectos');
+      }
+      setLoading(false);
+    },400);
   }
+
   return(
-    <div className="login-bg">
-      <div className="login-card">
+    <div className="login-wrap">
+      <div className="login-box">
         <div style={{textAlign:'center',marginBottom:28}}>
-          <div style={{width:46,height:46,border:'1.5px solid var(--teal)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px',background:'linear-gradient(135deg,#f9f3e6,#fff)'}}>
-            <svg viewBox="0 0 24 24" style={{width:20,height:20,stroke:'var(--teal2)',fill:'none',strokeWidth:1.7,strokeLinecap:'round'}}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <div style={{width:52,height:52,background:'var(--dark)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px'}}>
+            <svg viewBox="0 0 24 24" style={{width:26,height:26,stroke:'#fff',fill:'none',strokeWidth:1.6,strokeLinecap:'round'}}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </div>
-          <div style={{fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:700,color:'var(--ink)'}}>Crédito <em style={{color:'var(--teal)',fontStyle:'italic'}}>San Juan</em></div>
-          <div style={{fontSize:11.5,color:'var(--grey)',marginTop:4}}>Plataforma de gestión financiera</div>
+          <div style={{fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:700,color:'var(--dark)'}}>Crédito <em style={{color:'var(--teal)',fontStyle:'normal'}}>San Juan</em></div>
+          <div style={{fontSize:11,color:'var(--grey)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:4}}>Sistema de gestión</div>
         </div>
-        <div style={{display:'grid',gap:12,marginBottom:14}}>
-          <div><span className="lbl">Correo electrónico</span><input className="inp" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="usuario@correo.com" onKeyDown={e=>e.key==='Enter'&&submit()}/></div>
-          <div><span className="lbl">Contraseña</span><input className="inp" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==='Enter'&&submit()}/></div>
+        <div style={{marginBottom:14}}>
+          <span className="lbl">Usuario</span>
+          <input className="inp" value={username} onChange={e=>setUsername(e.target.value)}
+            placeholder="Tu usuario" onKeyDown={e=>e.key==='Enter'&&submit()}
+            autoCapitalize="off" autoCorrect="off"/>
         </div>
-        {msg&&<div style={{fontSize:12.5,padding:'9px 12px',borderRadius:7,marginBottom:12,background:msg.startsWith('✓')?'#dff2e8':'#fde8e8',color:msg.startsWith('✓')?'#1e6e3a':'#b52a2a'}}>{msg}</div>}
-        <button className="btn" style={{width:'100%',marginBottom:12,padding:'12px'}} onClick={submit} disabled={loading||!email||!pass}>{loading?'Verificando...':mode==='login'?'Iniciar sesión':'Crear cuenta'}</button>
-        <p style={{fontSize:12.5,color:'var(--grey)',textAlign:'center'}}>{mode==='login'?'¿Primera vez? ':'¿Ya tienes cuenta? '}<span style={{color:'var(--teal)',cursor:'pointer',fontWeight:600}} onClick={()=>{setMode(m=>m==='login'?'register':'login');setMsg('');}}>{mode==='login'?'Crear cuenta':'Iniciar sesión'}</span></p>
+        <div style={{marginBottom:20}}>
+          <span className="lbl">Contraseña</span>
+          <div style={{position:'relative'}}>
+            <input className="inp" type={showPass?'text':'password'} value={pass}
+              onChange={e=>setPass(e.target.value)} placeholder="••••••••"
+              onKeyDown={e=>e.key==='Enter'&&submit()} style={{paddingRight:40}}/>
+            <button onClick={()=>setShowPass(p=>!p)}
+              style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--grey)',padding:4}}>
+              {showPass
+                ?<svg viewBox="0 0 24 24" style={{width:16,height:16,stroke:'currentColor',fill:'none',strokeWidth:2,strokeLinecap:'round'}}><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                :<svg viewBox="0 0 24 24" style={{width:16,height:16,stroke:'currentColor',fill:'none',strokeWidth:2,strokeLinecap:'round'}}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              }
+            </button>
+          </div>
+        </div>
+        {err&&<div style={{background:'#fde8e8',border:'1px solid #f5a5a5',borderRadius:6,padding:'9px 13px',color:'var(--red)',fontSize:13,fontWeight:600,marginBottom:14}}>{err}</div>}
+        <button className="btn" style={{width:'100%',padding:'12px',fontSize:14,justifyContent:'center'}}
+          onClick={submit} disabled={loading}>
+          {loading?'Verificando...':'Ingresar'}
+        </button>
       </div>
     </div>
   );
 }
 
-/* ══ APP ════════════════════════════════════════════════════════ */
 function App(){
   const[user,setUser]=useState(null);
   const[authLoading,setAuthLoading]=useState(true);
@@ -437,9 +482,12 @@ function App(){
   const[dbError,setDbError]=useState(null);// Error visible para debug
 
   useEffect(()=>{
-    db.auth.getSession().then(({data:{session}})=>{setUser(session?.user??null);setAuthLoading(false);});
-    const{data:{subscription}}=db.auth.onAuthStateChange((_,s)=>{setUser(s?.user??null);setAuthLoading(false);});
-    return()=>subscription.unsubscribe();
+    // Check sessionStorage for existing login
+    try{
+      const saved=sessionStorage.getItem('csj_user');
+      if(saved){const u=JSON.parse(saved);setUser(u);}
+    }catch(e){}
+    setAuthLoading(false);
   },[]);
   useEffect(()=>{if(user)loadAll();},[user]);
 
@@ -482,8 +530,7 @@ function App(){
     setDbError(null);
     setSaving(true);
 
-    const{data:{session}}=await db.auth.getSession();
-    const token=session?.access_token||SKEY;
+    const token=SKEY;
     const H={
       'Content-Type':'application/json',
       'apikey':SKEY,
@@ -497,11 +544,13 @@ function App(){
       const r=await apiFetch(SURL+'/rest/v1/prestamos',{method:'POST',headers:H,
         body:JSON.stringify({
           cliente:data.cliente,garante:data.garante||'',
-          referencia:data.referencia||'',cliente_externo:data.clienteExterno,
+          referencia:data.referencia||'',
+          cliente_externo:data.cliente_externo||data.clienteExterno||'NO',
           monto:N(data.monto),tasa:N(data.tasa),tipo:data.tipo,
           cuotas:N(data.cuotas),desgravamen:N(data.desgravamen||0),
-          gasto_operativo:N(data.gastoOperativo||0),
-          fecha_prestamo:data.fechaPrestamo,creado_por_email:user.email,
+          gasto_operativo:N(data.gasto_operativo||data.gastoOperativo||0),
+          fecha_prestamo:data.fecha_prestamo||data.fechaPrestamo,
+          creado_por_email:user.user||user.email||'',
         }),
       });
       const txt=await r.text();
@@ -633,9 +682,10 @@ function App(){
       <div className="sb-ft">
         <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:9}}>
           <div className="sb-av">{user.email[0].toUpperCase()}</div>
-          <div className="sb-email">{user.email}</div>
+          <div className="sb-email" style={{color:'rgba(255,255,255,.6)',fontSize:12,fontWeight:500}}>{user.user||user.email}</div>
+        <div style={{fontSize:9.5,color:'rgba(255,255,255,.3)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>{user.rol||'usuario'}</div>
         </div>
-        <button className="btn-lo" onClick={()=>db.auth.signOut()}>Cerrar sesión</button>
+        <button className="btn-lo" onClick={()=>{sessionStorage.removeItem('csj_user');setUser(null);}}>Cerrar sesión</button>
       </div>
     </>
   );
@@ -745,7 +795,7 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
       </div>
 
       {/* KPI STRIP */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:10,marginBottom:14}}>
+      <div className='kpi-grid' style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:10,marginBottom:14}}>
         {kpis.map((k,i)=>(
           <div key={i} style={{background:k.bg,borderRadius:6,padding:'14px 16px',border:'1px solid rgba(0,0,0,.06)'}}>
             <div style={{fontSize:9.5,fontWeight:700,color:k.sc,textTransform:'uppercase',letterSpacing:'.09em',marginBottom:6}}>{k.l}</div>
@@ -756,7 +806,7 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
       </div>
 
       {/* CHARTS ROW */}
-      <div className='dash-row-2' style={{display:'grid',gridTemplateColumns:'1.6fr 1fr',gap:12,marginBottom:12}}>
+      <div className='dash-row-2' className='dash-row-2' style={{display:'grid',gridTemplateColumns:'1.6fr 1fr',gap:12,marginBottom:12}}>
 
         {/* TENDENCIA DE COBROS */}
         <div className="card">
@@ -834,7 +884,7 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
       </div>
 
       {/* SECOND ROW */}
-      <div className='dash-row-2' style={{display:'grid',gridTemplateColumns:'1fr 1.4fr',gap:12,marginBottom:12}}>
+      <div className='dash-row-2' className='dash-row-2' style={{display:'grid',gridTemplateColumns:'1fr 1.4fr',gap:12,marginBottom:12}}>
 
         {/* TOP CLIENTES */}
         <div className="card">
@@ -920,36 +970,7 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
         </div>
       )}
 
-      {/* RECENT LOANS */}
-      {loans.length>0?(
-        <div className="card">
-          <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Préstamos recientes</div></div>
-          <div className="tbl-wrap"><table>
-            <thead><tr><th>ID</th><th>Cliente</th><th>Monto</th><th>Tipo</th><th>Cuotas</th><th>Inicio</th><th>Estado</th></tr></thead>
-            <tbody>{loans.slice(0,6).map(l=>{
-              const est=getEstPrestamo(sched.filter(r=>r.prestamo_id===l.id));
-              return<tr key={l.id}>
-                <td style={{color:'var(--grey)',fontWeight:600}}>#{l.id}</td>
-                <td style={{fontWeight:600}}>{l.cliente}</td>
-                <td style={{fontWeight:700,color:D}}>{fmt(l.monto)}</td>
-                <td><span style={{fontSize:10.5,background:'var(--light)',color:D,borderRadius:3,padding:'2px 8px',fontWeight:700}}>{l.tipo}</span></td>
-                <td style={{color:'var(--grey)'}}>{l.cuotas}</td>
-                <td style={{color:'var(--grey)',fontSize:12}}>{fmtD(l.fecha_prestamo)}</td>
-                <td><Badge s={est}/></td>
-              </tr>;
-            })}</tbody>
-          </table></div>
-        </div>
-      ):(
-        <div className="card" style={{textAlign:'center',padding:52}}>
-          <div style={{width:44,height:44,borderRadius:6,background:'var(--light)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 13px',color:T}}>
-            <svg viewBox="0 0 24 24" style={{width:22,height:22,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round'}}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
-          </div>
-          <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:16,fontWeight:700,color:'var(--ink)',marginBottom:7}}>Sin préstamos registrados</div>
-          <div style={{color:'var(--grey)',marginBottom:18,fontSize:13}}>Empieza registrando el primer préstamo</div>
-          <button className="btn" onClick={()=>goTo('newLoan')}>Nuevo préstamo</button>
-        </div>
-      )}
+
     </div>
   );
 }
@@ -977,14 +998,19 @@ function NuevoPrestamo({onCreate}){
     desgravamen:d,gasto_operativo:go,fecha_prestamo:f.fechaPrestamo,
     creado_por_email:'',
   }:null;
-  const prevRows=prevLoan?genCrono({...prevLoan,fecha_prestamo:f.fechaPrestamo},'BORRADOR').map((r,i)=>({
-    id:'prev_'+i,prestamo_id:'BORRADOR',cliente:f.cliente,
-    n_cuota:r.n_cuota,fecha_vence:r.fecha_vence,
-    capital_cuota:r.capital_cuota,interes_cuota:r.interes_cuota,
-    desgravamen:r.desgravamen,gasto_operativo:r.gasto_operativo||0,
-    cuota_base:r.cuota_base,tipo_pago:'NORMAL',
-    monto_pagado:null,mora:null,fecha_pago:null,
-  })):[];
+  const prevRows=React.useMemo(()=>{
+    if(!prevLoan)return[];
+    try{
+      return genCrono({...prevLoan,fecha_prestamo:f.fechaPrestamo},'BORRADOR').map((r,i)=>({
+        id:'prev_'+i,prestamo_id:'BORRADOR',cliente:f.cliente,
+        n_cuota:r.n_cuota,fecha_vence:r.fecha_vence,
+        capital_cuota:r.capital_cuota,interes_cuota:r.interes_cuota,
+        desgravamen:r.desgravamen,gasto_operativo:r.gasto_operativo||0,
+        cuota_base:r.cuota_base,tipo_pago:'NORMAL',
+        monto_pagado:null,mora:null,fecha_pago:null,
+      }));
+    }catch(e){return[];}
+  },[f.cliente,f.fechaPrestamo,m,t,c,d,go,f.tipo]);
 
   async function crearPrestamo(){
     if(!ok){setDbErr('Completa todos los campos requeridos');return;}
@@ -1115,8 +1141,7 @@ function NuevoPrestamo({onCreate}){
               Vista previa
             </button>
             <button className="btn-ol btn-sm" style={{fontSize:11,color:'var(--grey)'}} onClick={async()=>{
-                const{data:{session}}=await db.auth.getSession();
-                const token=session?.access_token||SKEY;
+                const token=SKEY;
                 const H={'Content-Type':'application/json','apikey':SKEY,'Authorization':'Bearer '+token,'Prefer':'return=representation'};
                 let log='=== DIAGNÓSTICO DB ===';
                 try{const r=await apiFetch(SURL+'/rest/v1/prestamos?limit=1',{headers:H},8000);log+=' | SELECT:'+r.status;}catch(ex){log+=' | SELECT FALLO:'+ex.message;}
@@ -1150,24 +1175,49 @@ function Prestamos({loans,sched,onDelete,onVer,onPagar}){
         <input className="inp" placeholder="Buscar cliente o ID..." value={q} onChange={e=>setQ(e.target.value)} style={{width:220}}/>
       </div>
       <div className="card"><div className="tbl-wrap"><table>
-        <thead><tr><th>ID</th><th>Cliente</th><th>Monto</th><th>Tipo</th><th>Cuotas</th><th>Tasa</th><th>Inicio</th><th>Cobrado</th><th>Registrado por</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>ID</th><th>Cliente / Garante</th><th>Monto</th><th>Tipo / Tasa</th><th>Cuotas</th><th>Progreso</th><th>Cobrado / Saldo</th><th>Inicio</th><th>Estado</th><th>Acciones</th></tr></thead>
         <tbody>
-          {fl.length===0&&<tr><td colSpan={11} style={{textAlign:'center',padding:44,color:'var(--grey)'}}>No se encontraron préstamos</td></tr>}
+          {fl.length===0&&<tr><td colSpan={10} style={{textAlign:'center',padding:44,color:'var(--grey)'}}>No se encontraron préstamos</td></tr>}
           {fl.map(l=>{
             const cuotas=sched.filter(r=>r.prestamo_id===l.id);
             const est=getEstPrestamo(cuotas);
             const s2=sig(l.id);
-            return<tr key={l.id}>
-              <td style={{color:'#bbb',fontSize:11}}>#{l.id}</td>
-              <td><div style={{fontWeight:600}}>{l.cliente}</div>{l.garante&&<div style={{fontSize:11,color:'var(--grey)'}}>Gar: {l.garante}</div>}</td>
-              <td style={{fontWeight:700,color:'var(--dark)'}}>{fmt(l.monto)}</td>
-              <td><span style={{fontSize:10.5,background:'var(--light)',color:'var(--dark)',borderRadius:4,padding:'3px 8px',fontWeight:700}}>{l.tipo}</span></td>
-              <td style={{color:'var(--grey)'}}>{l.cuotas}</td>
-              <td style={{fontWeight:600}}>{(N(l.tasa)*100).toFixed(1)}%</td>
-              <td style={{color:'var(--grey)',fontSize:12}}>{fmtD(l.fecha_prestamo)}</td>
-              <td style={{fontWeight:700,color:'var(--green)'}}>{fmt(cob(l.id))}</td>
-              <td style={{fontSize:11,color:'var(--grey)'}}>{l.creado_por_email?.split('@')[0]||'—'}</td>
+            return<tr key={l.id}>{(()=>{
+              const pagadas=cuotas.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).length;
+              const saldo=cuotas.reduce((a,r)=>a+getSaldo(r),0);
+              const cobrado=cob(l.id);
+              const pct=l.cuotas>0?Math.round(pagadas/l.cuotas*100):0;
+              return(<>
+              <td style={{color:'var(--grey)',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>#{l.id}</td>
+              <td style={{minWidth:140}}>
+                <div style={{fontWeight:700,color:'var(--ink)',fontSize:13}}>{l.cliente}</div>
+                {l.garante&&<div style={{fontSize:11,color:'var(--grey)',marginTop:1}}>Gar: {l.garante}</div>}
+                {l.referencia&&<div style={{fontSize:10.5,color:'var(--teal)',marginTop:1}}>Ref: {l.referencia}</div>}
+              </td>
+              <td style={{fontWeight:700,color:'var(--dark)',whiteSpace:'nowrap'}}>{fmt(l.monto)}</td>
+              <td>
+                <span style={{fontSize:10,background:'var(--light)',color:'var(--dark)',borderRadius:4,padding:'2px 7px',fontWeight:700,display:'block',marginBottom:3}}>{l.tipo}</span>
+                <span style={{fontSize:11,color:'var(--grey)',fontWeight:600}}>{(N(l.tasa)*100).toFixed(1)}%</span>
+              </td>
+              <td style={{textAlign:'center'}}>
+                <div style={{fontWeight:700,fontSize:13,color:'var(--dark)'}}>{pagadas}<span style={{color:'var(--grey)',fontWeight:400}}>/{l.cuotas}</span></div>
+                <div style={{fontSize:9.5,color:'var(--grey)',letterSpacing:'.05em'}}>pagadas</div>
+              </td>
+              <td style={{minWidth:90}}>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <div style={{flex:1,height:5,background:'var(--border)',borderRadius:3,overflow:'hidden'}}>
+                    <div style={{height:'100%',width:pct+'%',background:pct===100?'var(--green)':'var(--teal2)',borderRadius:3,transition:'width .3s'}}/>
+                  </div>
+                  <span style={{fontSize:10.5,fontWeight:700,color:pct===100?'var(--green)':'var(--grey)',minWidth:28}}>{pct}%</span>
+                </div>
+              </td>
+              <td style={{minWidth:110}}>
+                <div style={{fontWeight:700,color:'var(--green)',fontSize:12}}>{fmt(cobrado)}</div>
+                <div style={{fontSize:11,color:saldo>0?'var(--red)':'var(--grey)',fontWeight:saldo>0?600:400}}>Saldo: {fmt(saldo)}</div>
+              </td>
+              <td style={{color:'var(--grey)',fontSize:11,whiteSpace:'nowrap'}}>{fmtD(l.fecha_prestamo)}</td>
               <td><Badge s={est}/></td>
+              </>);})()}
               <td><div style={{display:'flex',gap:6,alignItems:'center'}}>
                 <button className="btn-ol btn-sm" onClick={()=>onVer(l)}>Ver</button>
                 {s2&&<button className="btn btn-sm" onClick={()=>onPagar(s2)}>Pagar</button>}
