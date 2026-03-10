@@ -29,30 +29,30 @@ input,select,button{font-family:'DM Sans',sans-serif}
 .sb{width:228px;background:var(--ink);display:flex;flex-direction:column;min-height:100vh;flex-shrink:0;position:relative}
 .sb::after{content:'';position:absolute;top:0;right:0;width:1px;height:100%;background:linear-gradient(to bottom,transparent,rgba(184,151,58,.25) 30%,rgba(184,151,58,.25) 70%,transparent)}
 .sb-hd{padding:26px 20px 18px}
-.sb-em{width:34px;height:34px;border:1.5px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:11px}
+.sb-em{width:34px;height:34px;border:1.5px solid var(--teal);border-radius:6px;display:flex;align-items:center;justify-content:center;margin-bottom:11px}
 .sb-brand{font-family:'Fraunces',serif;font-size:18px;font-weight:700;color:#fff;line-height:1.2}
-.sb-brand em{color:var(--gold2);font-style:italic}
+.sb-brand em{color:rgba(255,255,255,.85);font-style:normal;font-weight:300}
 .sb-tag{font-size:9.5px;color:rgba(255,255,255,.3);letter-spacing:.16em;text-transform:uppercase;margin-top:4px}
-.sb-div{height:1px;background:linear-gradient(to right,rgba(184,151,58,.35),transparent);margin:6px 20px 14px}
+.sb-div{height:1px;background:linear-gradient(to right,rgba(45,138,122,.4),transparent);margin:6px 20px 14px}
 .sb-nav{padding:0 10px;flex:1}
 .sb-sec{font-size:9px;font-weight:700;color:rgba(255,255,255,.22);letter-spacing:.16em;text-transform:uppercase;padding:12px 10px 5px}
 .nl{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:rgba(255,255,255,.52);margin-bottom:1px;transition:all .18s;border-left:2px solid transparent}
 .nl:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.82)}
-.nl.on{background:rgba(184,151,58,.11);color:var(--gold2);border-left-color:var(--gold)}
+.nl.on{background:rgba(45,138,122,.14);color:var(--teal2);border-left-color:var(--teal)}
 .nl-ic{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:rgba(255,255,255,.05);flex-shrink:0}
-.nl.on .nl-ic{background:rgba(184,151,58,.14)}
+.nl.on .nl-ic{background:rgba(45,138,122,.18)}
 .nl-ic svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .sb-ft{padding:14px 20px;border-top:1px solid rgba(255,255,255,.07)}
-.sb-av{width:28px;height:28px;border-radius:50%;background:rgba(184,151,58,.18);border:1px solid rgba(184,151,58,.35);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--gold2);flex-shrink:0}
+.sb-av{width:28px;height:28px;border-radius:6px;background:rgba(45,138,122,.22);border:1px solid rgba(45,138,122,.4);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--gold2);flex-shrink:0}
 .sb-email{font-size:11px;color:rgba(255,255,255,.38);word-break:break-all;line-height:1.3}
 .btn-lo{width:100%;background:transparent;color:rgba(255,255,255,.38);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px;font-size:11px;cursor:pointer;transition:all .18s;margin-top:9px}
 .btn-lo:hover{color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.22)}
 .main{flex:1;overflow:auto;background:var(--bg)}
 .page{padding:28px 30px;max-width:1400px}
 .pg-ey{font-size:10px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.14em;margin-bottom:3px}
-.pg-ti{font-family:'Fraunces',serif;font-size:24px;font-weight:700;color:var(--ink);letter-spacing:-.02em}
+.pg-ti{font-family:'DM Sans',sans-serif;font-size:22px;font-weight:700;color:var(--ink);letter-spacing:-.02em}
 .pg-su{font-size:12.5px;color:var(--grey);margin-top:3px;margin-bottom:20px}
-.card{background:var(--white);border-radius:13px;border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden}
+.card{background:var(--white);border-radius:6px;border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden}
 .c-hd{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
 .c-dot{width:5px;height:5px;border-radius:50%;background:var(--teal2);flex-shrink:0}
 .c-hd-t{font-size:11.5px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.06em}
@@ -99,14 +99,14 @@ tfoot td{padding:10px 13px;background:var(--light);font-weight:700;color:var(--d
 .b-encu{background:#fef3e2;color:#a0620a}.b-encu::before{background:#a0620a}
 .b-canc{background:#efefef;color:#777}.b-canc::before{background:#aaa}
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:11px;margin-bottom:18px}
-.kpi{background:var(--white);border:1px solid var(--border);border-radius:13px;padding:17px;box-shadow:var(--sh);position:relative;overflow:hidden;transition:transform .2s,box-shadow .2s}
-.kpi:hover{transform:translateY(-2px);box-shadow:var(--sh2)}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:16px 18px;box-shadow:var(--sh);position:relative;overflow:hidden;transition:transform .2s,box-shadow .2s}
+.kpi:hover{box-shadow:var(--sh2)}
 .kpi-bar{position:absolute;top:0;left:0;right:0;height:3px}
-.kpi-ic{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+.kpi-ic{display:none}
 .kpi-ic svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.kpi-val{font-size:16px;font-weight:700;color:var(--dark);margin-bottom:3px;line-height:1}
-.kpi-lbl{font-size:10.5px;color:var(--grey);font-weight:500}
-.toast{position:fixed;bottom:22px;right:22px;padding:12px 18px;border-radius:10px;font-weight:600;font-size:13px;z-index:9999;box-shadow:0 8px 28px rgba(0,0,0,.2);display:flex;align-items:center;gap:9px;animation:slideUp .22s ease;max-width:380px}
+.kpi-val{font-size:18px;font-weight:700;color:var(--dark);margin-bottom:4px;line-height:1;letter-spacing:-.02em;font-family:'DM Sans',sans-serif}
+.kpi-lbl{font-size:10px;color:var(--grey);font-weight:600;text-transform:uppercase;letter-spacing:.07em}
+.toast{position:fixed;bottom:22px;right:22px;padding:12px 18px;border-radius:6px;font-weight:600;font-size:13px;z-index:9999;box-shadow:0 8px 28px rgba(0,0,0,.2);display:flex;align-items:center;gap:9px;animation:slideUp .22s ease;max-width:380px}
 .t-ok{background:var(--ink);color:#fff}
 .t-err{background:#b52a2a;color:#fff}
 .t-warn{background:#d97706;color:#fff}
@@ -392,8 +392,8 @@ function Login({onLogin}){
     <div className="login-bg">
       <div className="login-card">
         <div style={{textAlign:'center',marginBottom:28}}>
-          <div style={{width:46,height:46,border:'1.5px solid var(--gold)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px',background:'linear-gradient(135deg,#f9f3e6,#fff)'}}>
-            <svg viewBox="0 0 24 24" style={{width:20,height:20,stroke:'var(--gold)',fill:'none',strokeWidth:1.7,strokeLinecap:'round'}}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <div style={{width:46,height:46,border:'1.5px solid var(--teal)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px',background:'linear-gradient(135deg,#f9f3e6,#fff)'}}>
+            <svg viewBox="0 0 24 24" style={{width:20,height:20,stroke:'var(--teal2)',fill:'none',strokeWidth:1.7,strokeLinecap:'round'}}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </div>
           <div style={{fontFamily:"'Fraunces',serif",fontSize:24,fontWeight:700,color:'var(--ink)'}}>Crédito <em style={{color:'var(--teal)',fontStyle:'italic'}}>San Juan</em></div>
           <div style={{fontSize:11.5,color:'var(--grey)',marginTop:4}}>Plataforma de gestión financiera</div>
@@ -672,9 +672,8 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
         ].map((k,i)=>(
           <div key={i} className="kpi">
             <div className="kpi-bar" style={{background:k.bar}}/>
-            <div className="kpi-ic" style={{background:k.bg,color:k.c}}>{IC[k.ic]}</div>
+            <div className="kpi-lbl" style={{color:'var(--grey)',marginBottom:6}}>{k.l}</div>
             <div className="kpi-val" style={{color:k.c}}>{k.v}</div>
-            <div className="kpi-lbl">{k.l}</div>
           </div>
         ))}
       </div>
@@ -772,7 +771,7 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
       ):(
         <div className="card" style={{textAlign:'center',padding:52}}>
           <div style={{width:48,height:48,borderRadius:13,background:'var(--light)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 13px',color:'var(--teal)'}}><svg viewBox="0 0 24 24" style={{width:24,height:24,stroke:'currentColor',fill:'none',strokeWidth:1.5,strokeLinecap:'round'}}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></div>
-          <div style={{fontFamily:"'Fraunces',serif",fontSize:17,color:'var(--ink)',marginBottom:7}}>Sin préstamos registrados</div>
+          <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:16,color:'var(--ink)',fontWeight:700,marginBottom:7}}>Sin préstamos registrados</div>
           <div style={{color:'var(--grey)',marginBottom:18,fontSize:13}}>Empieza registrando el primer préstamo</div>
           <button className="btn" onClick={()=>goTo('newLoan')}>Nuevo préstamo</button>
         </div>
@@ -1232,172 +1231,135 @@ function Cronograma({loans,sched,viewLoan,onPagar}){
 
 /* ══ REGISTRAR PAGO ═════════════════════════════════════════════ */
 function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
-  const[loanId,setLoanId]=useState('');
-  const[rowId,setRowId]=useState('');
-  const[pago,setPago]=useState({tipoPago:'NORMAL',montoPagado:'',mora:'',fechaPago:todayStr()});
+  const[selId,setSelId]=useState(payingRow?String(payingRow.prestamo_id):'');
+  const[search,setSearch]=useState(payingRow?String(payingRow.prestamo_id):'');
+  const[selRow,setSelRow]=useState(payingRow||null);
+  const[monto,setMonto]=useState('');
+  const[mora,setMora]=useState('');
+  const[tipo,setTipo]=useState('NORMAL');
+  const[fecha,setFecha]=useState(new Date().toISOString().split('T')[0]);
   const[saving,setSaving]=useState(false);
-  const sp=(k,v)=>setPago(p=>({...p,[k]:v}));
+  const[err,setErr]=useState('');
 
-  useEffect(()=>{
-    if(payingRow){setLoanId(String(payingRow.prestamo_id));setRowId(String(payingRow.id));}
-  },[payingRow]);
+  // Search by ID or client name
+  const filtered=React.useMemo(()=>{
+    const q=search.trim().toLowerCase();
+    if(!q)return loans.slice(0,8);
+    return loans.filter(l=>String(l.id)===q||l.cliente.toLowerCase().includes(q)).slice(0,10);
+  },[loans,search]);
 
-  const loanIdN=Number(loanId)||0;
-  const rowIdN=Number(rowId)||0;
-  const loan=loans.find(l=>l.id===loanIdN);
-  const todasCuotas=loanIdN?sched.filter(r=>r.prestamo_id===loanIdN):[];
-  const pend=todasCuotas.filter(r=>!['Pagado','Adelantado'].includes(getEst(r))).sort((a,b)=>a.n_cuota-b.n_cuota);
-  const row=rowIdN?pend.find(r=>r.id===rowIdN):null;
-  const saldoTotal=todasCuotas.reduce((a,r)=>a+getSaldo(r),0);
+  const loan=loans.find(l=>l.id===Number(selId)||l.id===selId);
+  const loanRows=loan?sched.filter(r=>r.prestamo_id===loan.id).sort((a,b)=>a.n_cuota-b.n_cuota):[];
+  const pendientes=loanRows.filter(r=>!['Pagado','Adelantado'].includes(getEst(r)));
 
-  // Autocompletar monto según tipo
-  useEffect(()=>{
-    if(!row)return;
-    if(pago.tipoPago==='NORMAL')          sp('montoPagado',String(row.cuota_base));
-    else if(pago.tipoPago==='SOLO INTERES')sp('montoPagado',String(row.interes_cuota));
-    else if(pago.tipoPago==='PAGO ADELANTADO')sp('montoPagado',String(row.cuota_base));
-    else sp('montoPagado','');
-  },[pago.tipoPago,rowId]);
+  function selectLoan(l){setSelId(String(l.id));setSearch(l.cliente+' (ID:'+l.id+')');setSelRow(null);setErr('');}
 
-  const ultPagos=[...sched].filter(r=>r.fecha_pago).sort((a,b)=>new Date(b.fecha_pago)-new Date(a.fecha_pago)).slice(0,15);
-
-  async function submit(){
-    if(pago.tipoPago==='TOTAL PRESTAMO'){
-      setSaving(true);
-      await onPagarTodo(loanIdN,pago.fechaPago);
-      setSaving(false);setRowId('');setLoanId('');
-      return;
-    }
-    if(!row||!pago.montoPagado){alert('Selecciona una cuota e ingresa el monto pagado.');return;}
-    setSaving(true);
-    await onPay(row.id,pago);
+  async function pagar(){
+    if(!selRow){setErr('Selecciona una cuota');return;}
+    if(!monto||isNaN(Number(monto))){setErr('Ingresa el monto a pagar');return;}
+    setSaving(true);setErr('');
+    try{
+      await onPay({row:selRow,monto:Number(monto),mora:Number(mora||0),tipo,fecha});
+      setSelRow(null);setMonto('');setMora('');setTipo('NORMAL');
+    }catch(ex){setErr(ex.message);}
     setSaving(false);
-    setPago({tipoPago:'NORMAL',montoPagado:'',mora:'',fechaPago:todayStr()});
-    setRowId('');
   }
-
-  const TIPOS=[
-    {v:'NORMAL',           lbl:'Normal',           desc:'Paga la cuota completa'},
-    {v:'PARCIAL',          lbl:'Parcial',           desc:'Abono menor al monto de la cuota'},
-    {v:'SOLO INTERES',     lbl:'Solo interés',      desc:'Solo paga interés, no reduce capital'},
-    {v:'PAGO ADELANTADO',  lbl:'Pago adelantado',   desc:'Paga esta cuota antes de su fecha'},
-    {v:'TOTAL PRESTAMO',   lbl:'Cancelar préstamo', desc:'Cancela todas las cuotas pendientes de una vez'},
-  ];
-
-  const noCuota=pago.tipoPago==='TOTAL PRESTAMO';
 
   return(
     <div style={{animation:'fadeIn .3s ease'}}>
-      <div><div className="pg-ey">Cobranzas</div><div className="pg-ti">Registrar Pago</div><div className="pg-su">Selecciona préstamo, elige tipo de pago y confirma</div></div>
-      <div style={{display:'grid',gridTemplateColumns:'minmax(0,440px) 1fr',gap:18,alignItems:'start'}}>
-        <div className="card">
-          <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Datos del pago</div></div>
-          <div className="c-bd">
-            <div style={{display:'grid',gap:13}}>
-              <div>
-                <span className="lbl">Préstamo</span>
-                <select className="inp" value={loanId} onChange={e=>{setLoanId(e.target.value);setRowId('');setPago(p=>({...p,tipoPago:'NORMAL',montoPagado:''}));}}>
-                  <option value="">— Selecciona un préstamo —</option>
-                  {loans.map(l=><option key={l.id} value={String(l.id)}>{l.cliente} · {fmt(l.monto)} ({l.tipo})</option>)}
-                </select>
-              </div>
+      <div><div className="pg-ey">Pagos</div><div className="pg-ti">Registrar pago</div><div className="pg-su">Busca por ID o nombre del cliente</div></div>
 
-              {/* Tipo de pago — radio buttons visibles */}
-              {loanIdN>0&&(
-                <div>
-                  <span className="lbl">Tipo de pago</span>
-                  <div style={{display:'grid',gap:6}}>
-                    {TIPOS.map(tp=>(
-                      <label key={tp.v} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:8,border:`1.5px solid ${pago.tipoPago===tp.v?'var(--teal2)':'var(--border)'}`,background:pago.tipoPago===tp.v?'#f0faf6':'#fff',cursor:'pointer',transition:'all .15s'}}>
-                        <input type="radio" name="tipoPago" value={tp.v} checked={pago.tipoPago===tp.v} onChange={()=>sp('tipoPago',tp.v)} style={{accentColor:'var(--teal)',width:14,height:14,flexShrink:0}}/>
-                        <div>
-                          <div style={{fontWeight:600,fontSize:13,color:pago.tipoPago===tp.v?'var(--dark)':'#444'}}>{tp.lbl}</div>
-                          <div style={{fontSize:11,color:'var(--grey)'}}>{tp.desc}</div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Cuota — solo si no es cancelar total */}
-              {loanIdN>0&&!noCuota&&(
-                <div>
-                  <span className="lbl">Cuota a pagar</span>
-                  <select className="inp" value={rowId} onChange={e=>setRowId(e.target.value)} disabled={pend.length===0}>
-                    <option value="">— Selecciona cuota —</option>
-                    {pend.map(r=><option key={r.id} value={String(r.id)}>Cuota {r.n_cuota} · {fmtD(r.fecha_vence)} · {fmt(r.cuota_base)} [{getEst(r)}]</option>)}
-                  </select>
-                  {pend.length===0&&<div style={{fontSize:12,color:'var(--green)',marginTop:5,padding:'7px 12px',background:'#dff2e8',borderRadius:6}}>✓ Todas las cuotas de este préstamo están pagadas</div>}
-                </div>
-              )}
+      {/* SEARCH BOX */}
+      <div className="card" style={{marginBottom:13}}>
+        <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Buscar préstamo</div></div>
+        <div className="c-bd">
+          <div style={{display:'flex',gap:10,alignItems:'center',marginBottom:10}}>
+            <div style={{position:'relative',flex:1,maxWidth:380}}>
+              <span style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:'var(--grey)',pointerEvents:'none'}}>
+                <svg viewBox="0 0 24 24" style={{width:14,height:14,stroke:'currentColor',fill:'none',strokeWidth:2,strokeLinecap:'round'}}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </span>
+              <input className="inp" placeholder="ID o nombre del cliente..." value={search} onChange={e=>{setSearch(e.target.value);setSelId('');}}
+                style={{paddingLeft:34}} />
             </div>
-
-            {/* Detalle cuota */}
-            {row&&!noCuota&&(
-              <div style={{margin:'14px 0',background:'linear-gradient(135deg,var(--light),#f0faf6)',border:'1.5px solid var(--border)',borderRadius:10,padding:'13px 16px'}}>
-                <div style={{fontSize:10,fontWeight:700,color:'var(--teal)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:9}}>Detalle de la cuota</div>
-                <div style={{display:'grid',gridTemplateColumns:'auto 1fr',gap:'7px 14px',fontSize:13}}>
-                  <span style={{color:'var(--grey)'}}>Cliente:</span>    <span style={{fontWeight:600}}>{row.cliente}</span>
-                  <span style={{color:'var(--grey)'}}>Cuota N°:</span>   <span style={{fontWeight:700}}>{row.n_cuota} de {loan?.cuotas}</span>
-                  <span style={{color:'var(--grey)'}}>Vence:</span>      <span style={getEst(row)==='Vencido'?{color:'var(--red)',fontWeight:600}:{fontSize:12}}>{fmtD(row.fecha_vence)}</span>
-                  <span style={{color:'var(--grey)'}}>Estado:</span>     <span><Badge s={getEst(row)}/></span>
-                  <span style={{color:'var(--grey)'}}>Cuota base:</span> <span style={{fontWeight:700,color:'var(--dark)',fontSize:16}}>{fmt(row.cuota_base)}</span>
-                  <span style={{color:'var(--grey)'}}>Saldo total préstamo:</span><span style={{fontWeight:700,color:'var(--red)'}}>{fmt(saldoTotal)}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Cancelar total */}
-            {noCuota&&loanIdN>0&&(
-              <div style={{margin:'14px 0',padding:'13px 16px',background:'#dff2e8',border:'1px solid #a5d4b8',borderRadius:9}}>
-                <div style={{fontWeight:700,color:'var(--green)',marginBottom:5}}>Cancelar préstamo completo</div>
-                <div style={{fontSize:13,color:'var(--green)',marginBottom:10}}>Se marcarán como pagadas <strong>{pend.length} cuotas</strong> pendientes. Saldo total: <strong>{fmt(saldoTotal)}</strong></div>
-              </div>
-            )}
-
-            {/* Montos */}
-            {loanIdN>0&&(row||noCuota)&&(
-              <>
-                {!noCuota&&(
-                  <div style={{display:'grid',gap:11,marginBottom:11}}>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                      <div>
-                        <span className="lbl">Monto pagado (S/.) *</span>
-                        <input className="inp inp-green" type="number" value={pago.montoPagado} onChange={e=>sp('montoPagado',e.target.value)} placeholder={String(row?.cuota_base||'')} readOnly={pago.tipoPago==='NORMAL'||pago.tipoPago==='SOLO INTERES'||pago.tipoPago==='PAGO ADELANTADO'} style={(pago.tipoPago==='NORMAL'||pago.tipoPago==='SOLO INTERES'||pago.tipoPago==='PAGO ADELANTADO')?{opacity:.8}:{}}/>
-                      </div>
-                      <div><span className="lbl">Mora (S/.)</span><input className="inp" type="number" value={pago.mora} onChange={e=>sp('mora',e.target.value)} placeholder="0"/></div>
-                    </div>
-                  </div>
-                )}
-                <DatePicker label="Fecha de pago" value={pago.fechaPago} onChange={v=>sp('fechaPago',v)}/>
-                <button className="btn" style={{width:'100%',marginTop:14,padding:'12px'}} onClick={submit} disabled={saving}>{saving?'Guardando...':'✓ Confirmar pago'}</button>
-              </>
-            )}
+            {selId&&<span style={{fontSize:12,color:'var(--teal)',fontWeight:600}}>Préstamo #{selId} seleccionado</span>}
           </div>
-        </div>
-
-        <div className="card">
-          <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Últimos pagos registrados</div></div>
-          <div className="tbl-wrap"><table>
-            <thead><tr><th>Cliente</th><th>N° Cuota</th><th>Tipo</th><th>Pagado</th><th>Mora</th><th>Fecha pago</th><th>Estado</th></tr></thead>
-            <tbody>
-              {ultPagos.length===0&&<tr><td colSpan={7} style={{textAlign:'center',padding:40,color:'var(--grey)'}}>Sin pagos registrados aún</td></tr>}
-              {ultPagos.map((r,i)=>(
-                <tr key={i}>
-                  <td style={{fontWeight:500}}>{r.cliente}</td>
-                  <td style={{color:'var(--grey)'}}>{r.n_cuota}</td>
-                  <td style={{fontSize:11,color:'var(--grey)'}}>{r.tipo_pago}</td>
-                  <td style={{fontWeight:700,color:'var(--green)'}}>{fmt(r.monto_pagado)}</td>
-                  <td style={{color:r.mora?'var(--red)':'var(--grey)'}}>{r.mora?fmt(r.mora):'—'}</td>
-                  <td style={{fontSize:12}}>{fmtD(r.fecha_pago)}</td>
-                  <td><Badge s={getEst(r)}/></td>
-                </tr>
-              ))}
-            </tbody>
-          </table></div>
+          {/* Results dropdown when searching */}
+          {search.trim()&&!selId&&(
+            <div style={{border:'1px solid var(--border)',borderRadius:6,overflow:'hidden',maxWidth:480}}>
+              {filtered.length===0&&<div style={{padding:'10px 14px',color:'var(--grey)',fontSize:13}}>Sin resultados</div>}
+              {filtered.map(l=>{
+                const est=getEstPrestamo(sched.filter(r=>r.prestamo_id===l.id));
+                return<div key={l.id} onClick={()=>selectLoan(l)}
+                  style={{padding:'9px 14px',cursor:'pointer',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--white)'}}
+                  onMouseEnter={e=>e.currentTarget.style.background='var(--alt)'}
+                  onMouseLeave={e=>e.currentTarget.style.background='var(--white)'}>
+                  <div>
+                    <span style={{fontWeight:700,color:'var(--dark)',marginRight:8}}>#{l.id}</span>
+                    <span style={{fontWeight:600}}>{l.cliente}</span>
+                    <span style={{color:'var(--grey)',fontSize:12,marginLeft:8}}>{fmt(l.monto)} · {l.tipo}</span>
+                  </div>
+                  <Badge s={est}/>
+                </div>;
+              })}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* CUOTAS TABLE */}
+      {loan&&pendientes.length===0&&<div className="card" style={{padding:18,color:'var(--green)',fontWeight:600}}>✓ Todas las cuotas de {loan.cliente} están al día</div>}
+      {loan&&pendientes.length>0&&(
+        <div className="card" style={{marginBottom:13}}>
+          <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Cuotas pendientes — {loan.cliente}</div></div>
+          <div className="tbl-wrap"><table>
+            <thead><tr><th>#</th><th>Fecha</th><th>Cuota base</th><th>Mora</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+            <tbody>{pendientes.map(r=>{
+              const est=getEst(r);
+              return<tr key={r.id} style={{background:selRow?.id===r.id?'#e8f5ee':undefined}}>
+                <td style={{fontWeight:700,color:'var(--dark)'}}>{r.n_cuota}</td>
+                <td style={{color:est==='Vencido'?'var(--red)':undefined,fontWeight:est==='Vencido'?600:undefined,fontSize:12}}>{fmtD(r.fecha_vence)}</td>
+                <td>{fmt(r.cuota_base)}</td>
+                <td style={{color:'var(--red)'}}>{r.mora?fmt(r.mora):''}</td>
+                <td style={{fontWeight:700}}>{fmt(N(r.cuota_base)+N(r.mora||0))}</td>
+                <td><Badge s={est}/></td>
+                <td><button className="btn btn-sm" onClick={()=>{setSelRow(r);setMonto(String(N(r.cuota_base)+N(r.mora||0)));setTipo('NORMAL');}}>Seleccionar</button></td>
+              </tr>;
+            })}</tbody>
+          </table></div>
+        </div>
+      )}
+
+      {/* PAYMENT FORM */}
+      {selRow&&(
+        <div className="card">
+          <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Registrar pago — Cuota {selRow.n_cuota} · {loan?.cliente}</div></div>
+          <div className="c-bd" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+            <div>
+              <span className="lbl">Monto a pagar *</span>
+              <input className="inp" type="number" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="0.00"/>
+            </div>
+            <div>
+              <span className="lbl">Mora (S/.)</span>
+              <input className="inp" type="number" value={mora} onChange={e=>setMora(e.target.value)} placeholder="0.00"/>
+            </div>
+            <div>
+              <span className="lbl">Tipo de pago</span>
+              <select className="inp" value={tipo} onChange={e=>setTipo(e.target.value)}>
+                {['NORMAL','PARCIAL','SOLO INTERES','PAGO ADELANTADO','CANCELAR PRÉSTAMO'].map(t=><option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <span className="lbl">Fecha de pago</span>
+              <input className="inp" type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/>
+            </div>
+          </div>
+          {err&&<div style={{padding:'8px 18px',color:'var(--red)',fontSize:13,fontWeight:600}}>{err}</div>}
+          <div className="c-bd" style={{paddingTop:0,display:'flex',gap:10}}>
+            <button className="btn" disabled={saving} onClick={pagar}>{saving?'Guardando...':'Registrar pago'}</button>
+            <button className="btn-ol" onClick={()=>{setSelRow(null);setMonto('');setMora('');}}>Cancelar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
