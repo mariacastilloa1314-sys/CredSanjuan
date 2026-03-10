@@ -137,20 +137,29 @@ tfoot td{padding:10px 13px;background:var(--light);font-weight:700;color:var(--d
 @media(max-width:768px){
   .sb{display:none}.sb.open{display:flex;position:fixed;left:0;top:0;bottom:0;z-index:200;width:228px}
   .mob-bar{display:flex!important}
-  .page{padding:12px 10px}
+  .page{padding:10px 8px}
   .crono-info{grid-template-columns:1fr}
-  .kpi-grid{grid-template-columns:1fr 1fr;gap:8px}
-  .kpi{padding:12px}
-  .kpi-val{font-size:14px}
+  .kpi-grid{grid-template-columns:1fr 1fr!important;gap:8px}
+  .kpi{padding:11px 13px}
+  .kpi-val{font-size:16px!important}
   .dash-panels{grid-template-columns:1fr!important}
   .form-cols{grid-template-columns:1fr!important}
   .btn-row{flex-direction:column}
-  table{font-size:11.5px}
-  thead th{padding:7px 8px;font-size:9.5px}
-  tbody td{padding:7px 8px}
-  .c-bd{padding:12px}
-  .pg-ti{font-size:20px}
+  table{font-size:11px}
+  thead th{padding:6px 8px;font-size:9px}
+  tbody td{padding:6px 8px}
+  tfoot td{padding:6px 8px}
+  .c-bd{padding:10px}
+  .pg-ti{font-size:18px!important}
   .two-col{grid-template-columns:1fr!important}
+  .print-modal{font-size:11px}
+  .print-modal-bg{padding:10px}
+  /* Dashboard mobile fixes */
+  [style*="grid-template-columns:1.6fr 1fr"]{grid-template-columns:1fr!important;display:grid!important}
+  [style*="grid-template-columns:1fr 1.4fr"]{grid-template-columns:1fr!important;display:grid!important}
+  [style*="grid-template-columns:repeat(6,1fr)"]{grid-template-columns:1fr 1fr!important;display:grid!important}
+  [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr 1fr!important}
+  .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 }
 @media(max-width:400px){
   .kpi-grid{grid-template-columns:1fr 1fr}
@@ -1154,6 +1163,23 @@ function CronogramaModal({loan,rows,onClose}){
     a.click();
   }
 
+  async function copiarImagen(){
+    const el=modalRef.current;
+    if(!el||!window.html2canvas){alert('html2canvas no disponible');return;}
+    const btn=document.querySelector('.pm-actions');
+    if(btn)btn.style.display='none';
+    const canvas=await window.html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+    if(btn)btn.style.display='';
+    try{
+      canvas.toBlob(async(blob)=>{
+        await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+        alert('✓ Imagen copiada al portapapeles');
+      },'image/png');
+    }catch(ex){
+      alert('No se pudo copiar. Usa "Descargar imagen" en su lugar.');
+    }
+  }
+
   function imprimir(){
     const el=modalRef.current;
     const w=window.open('','_blank');
@@ -1171,7 +1197,8 @@ function CronogramaModal({loan,rows,onClose}){
         <div className="pm-actions" style={{display:'flex',gap:10,marginBottom:12,justifyContent:'flex-end',flexWrap:'wrap'}}>
           <button style={{background:'rgba(255,255,255,.9)',border:'1.5px solid rgba(255,255,255,.3)',color:'#333',fontSize:12,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontWeight:600}} onClick={onClose}>✕ Cerrar</button>
           <button style={{background:'rgba(255,255,255,.9)',border:'1.5px solid rgba(255,255,255,.3)',color:'#333',fontSize:12,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontWeight:600}} onClick={imprimir}>🖨 Imprimir / PDF</button>
-          <button style={{background:D,border:'none',color:'#fff',fontSize:12,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontWeight:600}} onClick={descargarImagen}>⬇ Descargar imagen</button>
+          <button style={{background:'rgba(255,255,255,.9)',border:'1.5px solid rgba(255,255,255,.3)',color:'#333',fontSize:12,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontWeight:600}} onClick={copiarImagen}>📋 Copiar imagen</button>
+          <button style={{background:D,border:'none',color:'#fff',fontSize:12,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontWeight:600}} onClick={descargarImagen}>⬇ Descargar</button>
         </div>
 
         <div className="print-modal" ref={modalRef} style={{fontFamily:NF,color:'#111',borderRadius:0}}>
@@ -1517,12 +1544,14 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
 
 /* ══ EXPORTAR EXCEL ════════════════════════════════════════════ */
 function ExportarExcel({loans,sched}){
+  const D='#1B4F45'; const T='#2d8a7a';
+
   function exportar(){
     if(!window.XLSX){alert('XLSX no disponible');return;}
     const XL=window.XLSX;
     const wb=XL.utils.book_new();
 
-    // Construir datos
+    // ─ HOJA 1: PRÉSTAMOS ─────────────────────────────────────────
     const rows=loans.map(l=>{
       const cuotas=sched.filter(r=>r.prestamo_id===l.id);
       const est=getEstPrestamo(cuotas);
@@ -1542,56 +1571,85 @@ function ExportarExcel({loans,sched}){
       'Estado','Registrado por'];
 
     const ws=XL.utils.aoa_to_sheet([headers,...rows]);
-
-    // Anchos de columna
     ws['!cols']=[{wch:5},{wch:22},{wch:18},{wch:18},{wch:13},{wch:11},{wch:7},{wch:10},{wch:9},{wch:14},{wch:12},{wch:11},{wch:13},{wch:14},{wch:8},{wch:11},{wch:24}];
+    ws['!rows']=[{hpt:22},...rows.map(()=>({hpt:17}))];
 
-    // Estilos de cabecera (fondo oscuro, texto blanco, negrita)
-    const headerStyle={font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'1A1A2E'}},alignment:{horizontal:'center',vertical:'center'},border:{bottom:{style:'medium',color:{rgb:'C9A84C'}}}};
+    // Header style
+    const hSt={font:{bold:true,color:{rgb:'FFFFFF'},sz:10},fill:{fgColor:{rgb:'1B4F45'}},alignment:{horizontal:'center',vertical:'center'},border:{bottom:{style:'medium',color:{rgb:'2d8a7a'}}}};
     headers.forEach((_,ci)=>{
       const ref=XL.utils.encode_cell({r:0,c:ci});
-      if(!ws[ref])ws[ref]={t:'s',v:headers[ci]};
-      ws[ref].s=headerStyle;
+      if(ws[ref])ws[ref].s=hSt;
     });
 
-    // Estilos por fila — alternar + color estado
-    const estColors={'ACTIVO':'D1FAE5','EN CURSO':'DBEAFE','VENCIDO':'FEE2E2','CANCELADO':'F3F4F6'};
-    const estText={'ACTIVO':'065F46','EN CURSO':'1E40AF','VENCIDO':'991B1B','CANCELADO':'6B7280'};
+    // Row styles with estado colors
+    const estBg={'ACTIVO':'C6EFCE','EN CURSO':'BDD7EE','VENCIDO':'FFC7CE','CANCELADO':'EDEDED'};
+    const estFg={'ACTIVO':'276221','EN CURSO':'1F4E79','VENCIDO':'9C0006','CANCELADO':'595959'};
     rows.forEach((row,ri)=>{
-      const bg=ri%2===0?'FFFFFF':'F8F8FC';
+      const bg=ri%2===0?'FFFFFF':'F0F7F5';
+      const est=row[15];
       row.forEach((_,ci)=>{
         const ref=XL.utils.encode_cell({r:ri+1,c:ci});
         if(!ws[ref])return;
         const isEst=ci===15;
-        const estVal=row[15];
+        const isNum=typeof row[ci]==='number';
+        const isName=ci===1;
         ws[ref].s={
-          fill:{fgColor:{rgb:isEst?(estColors[estVal]||'F3F4F6'):bg}},
-          font:{sz:10,bold:ci===1||ci===5,color:{rgb:isEst?(estText[estVal]||'374151'):(ci===1?'1A1A2E':'374151')}},
-          alignment:{horizontal:typeof row[ci]==='number'?'right':(ci===0?'center':'left'),vertical:'center'},
-          border:{bottom:{style:'thin',color:{rgb:'E5E7EB'}}}
+          fill:{fgColor:{rgb:isEst?(estBg[est]||'EDEDED'):bg}},
+          font:{sz:10,bold:isName||isEst,color:{rgb:isEst?(estFg[est]||'595959'):(isName?'1B4F45':'333333')}},
+          alignment:{horizontal:isNum?'right':(ci===0?'center':'left'),vertical:'center',wrapText:false},
+          border:{bottom:{style:'thin',color:{rgb:'E0EBE0'}},right:{style:'thin',color:{rgb:'E8EEE8'}}}
         };
       });
     });
 
-    // Fila de totales al final
+    // Totals row
     const totMonto=rows.reduce((a,r)=>a+r[5],0);
     const totCob=rows.reduce((a,r)=>a+r[12],0);
     const totSaldo=rows.reduce((a,r)=>a+r[13],0);
     const totMora=rows.reduce((a,r)=>a+r[14],0);
-    const totRow=['','TOTALES','','','',
-      parseFloat(totMonto.toFixed(2)),'','','','','','',
-      parseFloat(totCob.toFixed(2)),parseFloat(totSaldo.toFixed(2)),parseFloat(totMora.toFixed(2)),'',''];
+    const totRow=['','TOTALES','','','',parseFloat(totMonto.toFixed(2)),'','','','','','',parseFloat(totCob.toFixed(2)),parseFloat(totSaldo.toFixed(2)),parseFloat(totMora.toFixed(2)),'',''];
     XL.utils.sheet_add_aoa(ws,[totRow],{origin:-1});
     const lastR=rows.length+1;
-    totRow.forEach((_,ci)=>{
+    totRow.forEach((v,ci)=>{
       const ref=XL.utils.encode_cell({r:lastR,c:ci});
       if(!ws[ref])return;
-      ws[ref].s={fill:{fgColor:{rgb:'1A1A2E'}},font:{bold:true,color:{rgb:'C9A84C'},sz:10},alignment:{horizontal:typeof totRow[ci]==='number'?'right':(ci===1?'left':'center'),vertical:'center'}};
+      ws[ref].s={fill:{fgColor:{rgb:'1B4F45'}},font:{bold:true,color:{rgb:typeof v==='number'?'90D4C0':'FFFFFF'},sz:10},alignment:{horizontal:typeof v==='number'?'right':(ci===1?'left':'center'),vertical:'center'}};
     });
+    ws['!rows'].push({hpt:20});
 
-    ws['!rows']=[{hpt:22},...rows.map(()=>({hpt:18})),{hpt:20}];
-
+    // ─ HOJA 2: CRONOGRAMA ────────────────────────────────────────
+    const cronoHeaders=['Préstamo ID','Cliente','N° Cuota','Fecha vence','Capital','Interés','Desgravamen','G. Operativo','Cuota base','Mora','Tipo pago','Monto pagado','Fecha pago','Estado','Saldo'];
+    const cronoRows=sched.sort((a,b)=>a.prestamo_id-b.prestamo_id||a.n_cuota-b.n_cuota).map(r=>[
+      r.prestamo_id,r.cliente,r.n_cuota,fmtD(r.fecha_vence),
+      N(r.capital_cuota),N(r.interes_cuota),N(r.desgravamen),N(r.gasto_operativo||0),N(r.cuota_base),
+      N(r.mora||0),r.tipo_pago||'',r.monto_pagado?N(r.monto_pagado):'',
+      r.fecha_pago?fmtD(r.fecha_pago):'',getEst(r),parseFloat(getSaldo(r).toFixed(2))
+    ]);
+    const ws2=XL.utils.aoa_to_sheet([cronoHeaders,...cronoRows]);
+    ws2['!cols']=[{wch:12},{wch:22},{wch:9},{wch:14},{wch:10},{wch:10},{wch:12},{wch:11},{wch:11},{wch:8},{wch:16},{wch:13},{wch:13},{wch:12},{wch:10}];
+    ws2['!rows']=[{hpt:22},...cronoRows.map(()=>({hpt:16}))];
+    const hSt2={...hSt,fill:{fgColor:{rgb:'2d8a7a'}}};
+    cronoHeaders.forEach((_,ci)=>{const ref=XL.utils.encode_cell({r:0,c:ci});if(ws2[ref])ws2[ref].s=hSt2;});
+    const estBg2={'Pagado':'C6EFCE','Adelantado':'C6EFCE','Vencido':'FFC7CE','Pendiente':'BDD7EE','Parcial':'FFEB9C','Solo int.':'E2EFDA'};
+    cronoRows.forEach((row,ri)=>{
+      const bg=ri%2===0?'FFFFFF':'F5FAF8';
+      const est=row[13];
+      row.forEach((_,ci)=>{
+        const ref=XL.utils.encode_cell({r:ri+1,c:ci});
+        if(!ws2[ref])return;
+        const isEst=ci===13;
+        const isNum=typeof row[ci]==='number';
+        ws2[ref].s={
+          fill:{fgColor:{rgb:isEst?(estBg2[est]||'F0F0F0'):bg}},
+          font:{sz:10,bold:isEst||ci===8,color:{rgb:'333333'}},
+          alignment:{horizontal:isNum?'right':(ci<=1||ci===10?'left':'center'),vertical:'center'},
+          border:{bottom:{style:'thin',color:{rgb:'E0EBE0'}}}
+        };
+      });
+    });
     XL.utils.book_append_sheet(wb,ws,'Préstamos');
+    XL.utils.book_append_sheet(wb,ws2,'Cronograma');
+
     const fecha=new Date().toISOString().split('T')[0];
     XL.writeFile(wb,'CreditoSanJuan_'+fecha+'.xlsx');
   }
@@ -1600,51 +1658,60 @@ function ExportarExcel({loans,sched}){
   const totCob=sched.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
   const totSaldo=sched.reduce((a,r)=>a+getSaldo(r),0);
   const totMora=sched.reduce((a,r)=>a+N(r.mora||0),0);
+  const nActivos=loans.filter(l=>getEstPrestamo(sched.filter(r=>r.prestamo_id===l.id))==='ACTIVO'||getEstPrestamo(sched.filter(r=>r.prestamo_id===l.id))==='EN CURSO').length;
 
   return(
     <div style={{animation:'fadeIn .3s ease'}}>
-      <div><div className="pg-ey">Reportes</div><div className="pg-ti">Exportar a Excel</div><div className="pg-su">Descarga toda la base de datos en un archivo Excel con 3 hojas: préstamos, cronograma y resumen por cliente.</div></div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:11,marginBottom:20}}>
+      <div><div className="pg-ey">Reportes</div><div className="pg-ti">Exportar datos</div><div className="pg-su">Descarga toda la información en Excel — actualizada en tiempo real</div></div>
+
+      {/* KPI strip */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10,marginBottom:18}}>
         {[
-          {l:'Préstamos registrados',v:loans.length,suf:'préstamos',c:'var(--dark)',bg:'var(--light)',bar:'var(--dark)'},
-          {l:'Total cuotas',v:sched.length,suf:'cuotas',c:'var(--teal)',bg:'#e4f4f0',bar:'var(--teal2)'},
-          {l:'Capital total',v:fmt(totPres),c:'var(--dark)',bg:'var(--light)',bar:'var(--dark)'},
-          {l:'Total cobrado',v:fmt(totCob),c:'var(--green)',bg:'#dff2e8',bar:'var(--green)'},
-          {l:'Saldo pendiente',v:fmt(totSaldo),c:'#a0620a',bg:'#fef3e2',bar:'#d97706'},
-          {l:'Mora acumulada',v:fmt(totMora),c:'var(--red)',bg:'#fde8e8',bar:'var(--red)'},
+          {l:'Préstamos',v:loans.length,suf:'total',c:D,bg:'var(--light)'},
+          {l:'Activos / en curso',v:nActivos,suf:'préstamos',c:T,bg:'#e4f4f0'},
+          {l:'Capital prestado',v:fmt(totPres),c:D,bg:'var(--light)'},
+          {l:'Total cobrado',v:fmt(totCob),c:'#1e6e3a',bg:'#dff2e8'},
+          {l:'Saldo pendiente',v:fmt(totSaldo),c:'#a0620a',bg:'#fef3e2'},
+          {l:'Mora acumulada',v:fmt(totMora),c:'var(--red)',bg:'#fde8e8'},
         ].map((k,i)=>(
-          <div key={i} className="kpi" style={{position:'relative',overflow:'hidden'}}>
-            <div className="kpi-bar" style={{background:k.bar,position:'absolute',top:0,left:0,right:0,height:3}}/>
-            <div className="kpi-val" style={{color:k.c,fontSize:18,marginTop:8}}>{k.v}</div>
-            <div className="kpi-lbl">{k.l}</div>
+          <div key={i} style={{background:k.bg,borderRadius:6,padding:'13px 16px',border:'1px solid rgba(0,0,0,.06)'}}>
+            <div style={{fontSize:9.5,fontWeight:700,color:k.c,textTransform:'uppercase',letterSpacing:'.08em',opacity:.7,marginBottom:5}}>{k.l}</div>
+            <div style={{fontSize:17,fontWeight:700,color:k.c,letterSpacing:'-.02em'}}>{k.v}</div>
           </div>
         ))}
       </div>
+
       <div className="card">
         <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Contenido del archivo</div></div>
         <div className="c-bd">
-          <div style={{display:'grid',gap:12,marginBottom:22}}>
+          <div style={{display:'grid',gap:10,marginBottom:20}}>
             {[
-              {icon:'📋',title:'Hoja 1 — Préstamos',desc:'Todos los préstamos con cliente, garante, referido por, monto, tasa, tipo, estado, cobrado y más.'},
-              {icon:'📅',title:'Hoja 2 — Cronograma completo',desc:'Cada cuota de cada préstamo con fechas, montos, pagos realizados, mora y saldo.'},
-              {icon:'👥',title:'Hoja 3 — Resumen por cliente',desc:'Consolidado por cliente: cuántos préstamos tiene, total prestado, cobrado y saldo pendiente.'},
+              {icon:'📋',title:'Hoja 1 — Préstamos',cols:'ID · Cliente · Garante · Referido por · Monto · Tasa · Tipo · Cuotas · Fecha · Desgravamen · Cobrado · Saldo · Mora · Estado',n:loans.length+' registros',c:D},
+              {icon:'📅',title:'Hoja 2 — Cronograma',cols:'Préstamo ID · Cliente · N° cuota · Fecha vence · Capital · Interés · Cuota base · Mora · Monto pagado · Estado · Saldo',n:sched.length+' cuotas',c:T},
             ].map((h,i)=>(
-              <div key={i} style={{display:'flex',gap:14,padding:'13px 16px',background:'var(--alt)',borderRadius:9,border:'1px solid var(--border)'}}>
-                <span style={{fontSize:22,flexShrink:0}}>{h.icon}</span>
-                <div><div style={{fontWeight:700,color:'var(--ink)',marginBottom:3,fontSize:13}}>{h.title}</div><div style={{fontSize:12.5,color:'var(--grey)'}}>{h.desc}</div></div>
+              <div key={i} style={{display:'flex',gap:14,padding:'12px 16px',background:'var(--alt)',borderRadius:6,border:'1px solid var(--border)',alignItems:'flex-start'}}>
+                <span style={{fontSize:20,flexShrink:0,marginTop:1}}>{h.icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3}}>
+                    <div style={{fontWeight:700,color:'var(--ink)',fontSize:13}}>{h.title}</div>
+                    <span style={{fontSize:11,color:'#fff',background:h.c,borderRadius:4,padding:'2px 9px',fontWeight:600}}>{h.n}</span>
+                  </div>
+                  <div style={{fontSize:11.5,color:'var(--grey)',lineHeight:1.5}}>{h.cols}</div>
+                </div>
               </div>
             ))}
           </div>
-          <button className="btn" style={{padding:'13px 32px',fontSize:14,display:'flex',alignItems:'center',gap:9}} onClick={exportar}>
-            <svg viewBox="0 0 24 24" style={{width:16,height:16,stroke:'currentColor',fill:'none',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Descargar Excel — {loans.length} préstamos
+          <button className="btn" style={{padding:'12px 28px',fontSize:13.5,display:'flex',alignItems:'center',gap:9}} onClick={exportar} disabled={loans.length===0}>
+            <svg viewBox="0 0 24 24" style={{width:15,height:15,stroke:'currentColor',fill:'none',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Descargar Excel
           </button>
-          {loans.length===0&&<div style={{marginTop:10,fontSize:12.5,color:'var(--grey)'}}>No hay datos aún — registra préstamos primero.</div>}
+          {loans.length===0&&<div style={{marginTop:9,fontSize:12.5,color:'var(--grey)'}}>No hay datos — registra préstamos primero.</div>}
         </div>
       </div>
     </div>
   );
 }
+
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
