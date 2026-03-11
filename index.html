@@ -251,7 +251,7 @@ const fmtD=d=>{
   return`${dd}/${m}/${y}`;
 };
 // Fecha hoy como "2026-03-06"
-const todayStr=()=>new Date().toISOString().split('T')[0];
+const todayStr=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 // Parsear "dd/mm/yyyy" o "yyyy-mm-dd" a objeto Date seguro
 const parseDate=s=>{
   if(!s)return null;
@@ -272,7 +272,7 @@ function getFV(base,n,tipo){
   if(tipo==='MENSUAL')return sumarMeses(base,n);
   const d=new Date(base+'T12:00:00');
   tipo==='SEMANAL'?d.setDate(d.getDate()+n*7+1):d.setDate(d.getDate()+n);
-  return d.toISOString().split('T')[0];
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 // tasa aquí ya viene como decimal (0.06)
 function calcInt(monto,tasa,tipo,cuotas){
@@ -658,6 +658,31 @@ function App(){
     showToast('Préstamo eliminado');
   }
 
+  async function editarPrestamo(loan, newData, recalcFechas){
+    const H={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=representation'};
+    // PATCH prestamos
+    const patchBody={
+      cliente:newData.cliente,garante:newData.garante||null,
+      referencia:newData.referencia||null,cliente_externo:newData.clienteExterno,
+      fecha_prestamo:newData.fechaPrestamo,
+    };
+    const r=await fetch(SURL+'/rest/v1/prestamos?id=eq.'+loan.id,{method:'PATCH',headers:H,body:JSON.stringify(patchBody)});
+    if(!r.ok){const t=await r.text();throw new Error('Error actualizando préstamo: '+t);}
+    // Recalcular fechas cronograma si cambia fecha_prestamo
+    if(recalcFechas&&newData.fechaPrestamo!==loan.fecha_prestamo){
+      const rows=sched.filter(s=>s.prestamo_id===loan.id).sort((a,b)=>a.n_cuota-b.n_cuota);
+      const fakeL={...loan,...patchBody,monto:loan.monto,tasa:loan.tasa,tipo:loan.tipo,cuotas:loan.cuotas,desgravamen:loan.desgravamen};
+      const newDates=genCrono(fakeL,loan.id);
+      for(const row of rows){
+        const nd=newDates.find(x=>x.n_cuota===row.n_cuota);
+        if(!nd)continue;
+        await fetch(SURL+'/rest/v1/cronograma?id=eq.'+row.id,{method:'PATCH',headers:H,body:JSON.stringify({fecha_vence:nd.fecha_vence})});
+      }
+    }
+    await loadAll();
+    showToast('Préstamo #'+loan.id+' actualizado ✓');
+  }
+
   function goTo(v){setView(v);setMob(false);if(v!=='schedule')setViewLoan(null);if(v!=='payments')setPayingRow(null);}
 
   if(authLoading)return<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh'}}><Spin/></div>;
@@ -738,7 +763,7 @@ function App(){
           )}
           {view==='dashboard'&&<Dashboard loans={loans} sched={sched} goTo={goTo} setPayingRow={setPayingRow}/>}
           {view==='newLoan'  &&<NuevoPrestamo onCreate={crearPrestamo}/>}
-          {view==='loans'   &&<Prestamos loans={loans} sched={sched} onDelete={eliminarPrestamo} onVer={l=>{setViewLoan(l);goTo('schedule');}} onPagar={r=>{setPayingRow(r);goTo('payments');}}/>}
+          {view==='loans'   &&<Prestamos loans={loans} sched={sched} onDelete={eliminarPrestamo} onEditar={editarPrestamo} onVer={l=>{setViewLoan(l);goTo('schedule');}} onPagar={r=>{setPayingRow(r);goTo('payments');}}/>}
           {view==='schedule'&&<Cronograma loans={loans} sched={sched} viewLoan={viewLoan} onPagar={r=>{setPayingRow(r);goTo('payments');}}/>}
           {view==='payments'&&<RegistrarPago loans={loans} sched={sched} payingRow={payingRow} onPay={registrarPago} onPagarTodo={pagarTodo}/>}
           {view==='export'   &&<ExportarExcel loans={loans} sched={sched}/>}
@@ -811,6 +836,15 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
     {l:'Interés generado', v:fmt(totInt),   sub:'sobre capital total',      bg:'#e4f4f0', tc:'#1B6B5A', sc:'#5a8a80'},
   ];
 
+  // ── Alertas de cobro ──
+  const _today=new Date();_today.setHours(0,0,0,0);
+  const _getDiff=fv=>{const d=new Date(fv+'T00:00:00');return Math.floor((d-_today)/(1000*60*60*24));};
+  const _pending=sched.filter(r=>!['Pagado','Adelantado'].includes(getEst(r)));
+  const alertHoy=_pending.filter(r=>_getDiff(r.fecha_vence)===0);
+  const alertProx=_pending.filter(r=>{const d=_getDiff(r.fecha_vence);return d>0&&d<=3;});
+  const alertVenc=_pending.filter(r=>_getDiff(r.fecha_vence)<0);
+  const alertDiffMap=new Map(_pending.map(r=>[r.id,_getDiff(r.fecha_vence)]));
+
   return(
     <div style={{animation:'fadeIn .3s ease'}}>
       
@@ -826,106 +860,88 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
       </div>
 
       {/* ══ ALERTAS DE COBRO ══ */}
-      {(()=>{
-        const today=new Date();today.setHours(0,0,0,0);
-        const getDiff=fv=>{const d=new Date(fv+'T00:00:00');return Math.floor((d-today)/(1000*60*60*24));};
-        const pending=sched.filter(r=>!['Pagado','Adelantado'].includes(getEst(r)));
-        const hoy=pending.filter(r=>getDiff(r.fecha_vence)===0);
-        const pronto=pending.filter(r=>{const d=getDiff(r.fecha_vence);return d>0&&d<=3;});
-        const vencidas=pending.filter(r=>getDiff(r.fecha_vence)<0);
-        if(hoy.length===0&&pronto.length===0&&vencidas.length===0)return null;
-        const getClienteNombre=r=>{
-          const l=loans.find(x=>x.id===r.prestamo_id||x.id===Number(r.prestamo_id));
-          return l?l.cliente:r.cliente;
-        };
-        return(
-          <div style={{marginBottom:14,display:'grid',gap:8}}>
-            {/* VENCE HOY */}
-            {hoy.length>0&&(
-              <div style={{background:'#fff3f3',border:'1.5px solid #e53935',borderRadius:10,overflow:'hidden'}}>
-                <div style={{background:'#e53935',padding:'8px 16px',display:'flex',alignItems:'center',gap:9}}>
-                  <span style={{fontSize:15}}>🔴</span>
-                  <span style={{fontWeight:700,color:'#fff',fontSize:13,letterSpacing:'.02em'}}>VENCE HOY — Cobrar ahora ({hoy.length})</span>
-                </div>
-                <div style={{padding:'8px 12px',display:'grid',gap:6}}>
-                  {hoy.slice(0,5).map((r,i)=>(
-                    <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,background:'#fff',borderRadius:7,padding:'8px 12px',border:'1px solid #f5c5c5',flexWrap:'wrap'}}>
-                      <div style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0}}>
-                        <span style={{background:'#e53935',color:'#fff',borderRadius:5,padding:'2px 7px',fontSize:10.5,fontWeight:700,whiteSpace:'nowrap'}}>#{r.prestamo_id}</span>
-                        <span style={{fontWeight:700,color:'#222',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{getClienteNombre(r)}</span>
-                        <span style={{color:'#777',fontSize:11.5,whiteSpace:'nowrap'}}>Cuota {r.n_cuota}</span>
-                      </div>
-                      <div style={{display:'flex',alignItems:'center',gap:10}}>
-                        <span style={{fontWeight:700,color:'#e53935',fontSize:14,whiteSpace:'nowrap'}}>{fmt(getSaldo(r))}</span>
-                        <button className="btn btn-sm" style={{background:'#e53935',border:'none',fontSize:11.5,padding:'5px 12px',whiteSpace:'nowrap'}} onClick={()=>{setPayingRow(r);goTo('payments');}}>Cobrar</button>
-                      </div>
+      {(alertHoy.length>0||alertProx.length>0||alertVenc.length>0)&&(
+        <div style={{marginBottom:14,display:'grid',gap:8}}>
+
+          {alertHoy.length>0&&(
+            <div style={{background:'#fff3f3',border:'1.5px solid #e53935',borderRadius:10,overflow:'hidden'}}>
+              <div style={{background:'#e53935',padding:'9px 16px',display:'flex',alignItems:'center',gap:9}}>
+                <span style={{fontSize:16}}>🔴</span>
+                <span style={{fontWeight:700,color:'#fff',fontSize:13.5}}>VENCE HOY — Cobrar ahora ({alertHoy.length})</span>
+              </div>
+              <div style={{padding:'8px 10px',display:'grid',gap:6}}>
+                {alertHoy.slice(0,5).map((r,i)=>(
+                  <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#fff',borderRadius:7,padding:'9px 12px',border:'1px solid #f5c5c5',flexWrap:'wrap'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:7,flex:1,minWidth:0}}>
+                      <span style={{background:'#e53935',color:'#fff',borderRadius:5,padding:'2px 7px',fontSize:10.5,fontWeight:700,whiteSpace:'nowrap'}}>#{r.prestamo_id}</span>
+                      <span style={{fontWeight:700,color:'#222',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(loans.find(x=>Number(x.id)===Number(r.prestamo_id))||{}).cliente||r.cliente}</span>
+                      <span style={{color:'#888',fontSize:11,whiteSpace:'nowrap'}}>Cuota {r.n_cuota}</span>
                     </div>
-                  ))}
-                  {hoy.length>5&&<div style={{textAlign:'center',fontSize:11.5,color:'#c0392b',fontWeight:600,padding:'4px 0'}}>+{hoy.length-5} más que vencen hoy</div>}
-                </div>
+                    <div style={{display:'flex',alignItems:'center',gap:9}}>
+                      <span style={{fontWeight:700,color:'#e53935',fontSize:14}}>{fmt(getSaldo(r))}</span>
+                      <button className="btn btn-sm" style={{background:'#e53935',border:'none',padding:'6px 13px',fontSize:12}} onClick={()=>{setPayingRow(r);goTo('payments');}}>Cobrar</button>
+                    </div>
+                  </div>
+                ))}
+                {alertHoy.length>5&&<div style={{textAlign:'center',fontSize:12,color:'#c0392b',fontWeight:600,padding:'3px 0'}}>+ {alertHoy.length-5} más que vencen hoy</div>}
               </div>
-            )}
-            {/* VENCE EN 1-3 DÍAS */}
-            {pronto.length>0&&(
-              <div style={{background:'#fffbf0',border:'1.5px solid #f59e0b',borderRadius:10,overflow:'hidden'}}>
-                <div style={{background:'#f59e0b',padding:'8px 16px',display:'flex',alignItems:'center',gap:9}}>
-                  <span style={{fontSize:15}}>🟡</span>
-                  <span style={{fontWeight:700,color:'#fff',fontSize:13,letterSpacing:'.02em'}}>PRÓXIMOS 3 DÍAS — Preparar cobro ({pronto.length})</span>
-                </div>
-                <div style={{padding:'8px 12px',display:'grid',gap:6}}>
-                  {pronto.slice(0,4).map((r,i)=>{
-                    const diff=getDiff(r.fecha_vence);
-                    return(
-                      <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,background:'#fff',borderRadius:7,padding:'8px 12px',border:'1px solid #fde68a',flexWrap:'wrap'}}>
-                        <div style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0}}>
-                          <span style={{background:'#f59e0b',color:'#fff',borderRadius:5,padding:'2px 7px',fontSize:10.5,fontWeight:700,whiteSpace:'nowrap'}}>#{r.prestamo_id}</span>
-                          <span style={{fontWeight:700,color:'#222',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{getClienteNombre(r)}</span>
-                          <span style={{color:'#777',fontSize:11.5,whiteSpace:'nowrap'}}>Cuota {r.n_cuota}</span>
-                        </div>
-                        <div style={{display:'flex',alignItems:'center',gap:10}}>
-                          <span style={{fontSize:11,color:'#92400e',fontWeight:600,background:'#fef3c7',borderRadius:5,padding:'2px 8px',whiteSpace:'nowrap'}}>en {diff} día{diff>1?'s':''}</span>
-                          <span style={{fontWeight:700,color:'#92400e',fontSize:14,whiteSpace:'nowrap'}}>{fmt(getSaldo(r))}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {pronto.length>4&&<div style={{textAlign:'center',fontSize:11.5,color:'#92400e',fontWeight:600,padding:'4px 0'}}>+{pronto.length-4} más en los próximos 3 días</div>}
-                </div>
+            </div>
+          )}
+
+          {alertProx.length>0&&(
+            <div style={{background:'#fffbf0',border:'1.5px solid #f59e0b',borderRadius:10,overflow:'hidden'}}>
+              <div style={{background:'#f59e0b',padding:'9px 16px',display:'flex',alignItems:'center',gap:9}}>
+                <span style={{fontSize:16}}>🟡</span>
+                <span style={{fontWeight:700,color:'#fff',fontSize:13.5}}>PRÓXIMOS 3 DÍAS — Preparar cobro ({alertProx.length})</span>
               </div>
-            )}
-            {/* VENCIDAS */}
-            {vencidas.length>0&&(
-              <div style={{background:'#1c1c1c',border:'1.5px solid #333',borderRadius:10,overflow:'hidden'}}>
-                <div style={{background:'#1c1c1c',padding:'8px 16px',display:'flex',alignItems:'center',gap:9}}>
-                  <span style={{fontSize:15}}>⚫</span>
-                  <span style={{fontWeight:700,color:'#ff6b6b',fontSize:13,letterSpacing:'.02em'}}>VENCIDAS — En mora ({vencidas.length})</span>
-                  <span style={{marginLeft:'auto',fontSize:11,color:'rgba(255,100,100,.7)',fontWeight:600}}>Saldo total: {fmt(vencidas.reduce((a,r)=>a+getSaldo(r),0))}</span>
-                </div>
-                <div style={{padding:'8px 12px',display:'grid',gap:6}}>
-                  {vencidas.slice(0,5).map((r,i)=>{
-                    const diff=Math.abs(getDiff(r.fecha_vence));
-                    return(
-                      <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,background:'#2a2a2a',borderRadius:7,padding:'8px 12px',border:'1px solid #444',flexWrap:'wrap'}}>
-                        <div style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0}}>
-                          <span style={{background:'#444',color:'#ff8a80',borderRadius:5,padding:'2px 7px',fontSize:10.5,fontWeight:700,whiteSpace:'nowrap'}}>#{r.prestamo_id}</span>
-                          <span style={{fontWeight:700,color:'#fff',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{getClienteNombre(r)}</span>
-                          <span style={{color:'#aaa',fontSize:11.5,whiteSpace:'nowrap'}}>Cuota {r.n_cuota}</span>
-                        </div>
-                        <div style={{display:'flex',alignItems:'center',gap:10}}>
-                          <span style={{fontSize:11,color:'#ff8a80',fontWeight:600,background:'rgba(255,100,100,.12)',borderRadius:5,padding:'2px 8px',whiteSpace:'nowrap'}}>{diff} día{diff!==1?'s':''} atrás</span>
-                          <span style={{fontWeight:700,color:'#ff6b6b',fontSize:14,whiteSpace:'nowrap'}}>{fmt(getSaldo(r))}</span>
-                          <button className="btn btn-sm" style={{background:'#333',border:'1px solid #555',color:'#ff8a80',fontSize:11.5,padding:'5px 12px',whiteSpace:'nowrap'}} onClick={()=>{setPayingRow(r);goTo('payments');}}>Cobrar</button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {vencidas.length>5&&<div style={{textAlign:'center',fontSize:11.5,color:'#ff8a80',fontWeight:600,padding:'4px 0'}}>+{vencidas.length-5} más en mora</div>}
-                </div>
+              <div style={{padding:'8px 10px',display:'grid',gap:6}}>
+                {alertProx.slice(0,4).map((r,i)=>(
+                  <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#fff',borderRadius:7,padding:'9px 12px',border:'1px solid #fde68a',flexWrap:'wrap'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:7,flex:1,minWidth:0}}>
+                      <span style={{background:'#f59e0b',color:'#fff',borderRadius:5,padding:'2px 7px',fontSize:10.5,fontWeight:700,whiteSpace:'nowrap'}}>#{r.prestamo_id}</span>
+                      <span style={{fontWeight:700,color:'#222',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(loans.find(x=>Number(x.id)===Number(r.prestamo_id))||{}).cliente||r.cliente}</span>
+                      <span style={{color:'#888',fontSize:11,whiteSpace:'nowrap'}}>Cuota {r.n_cuota}</span>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:9}}>
+                      <span style={{fontSize:11,color:'#92400e',fontWeight:700,background:'#fef3c7',borderRadius:5,padding:'3px 9px'}}>en {alertDiffMap.get(r.id)} día{alertDiffMap.get(r.id)>1?'s':''}</span>
+                      <span style={{fontWeight:700,color:'#92400e',fontSize:14}}>{fmt(getSaldo(r))}</span>
+                    </div>
+                  </div>
+                ))}
+                {alertProx.length>4&&<div style={{textAlign:'center',fontSize:12,color:'#92400e',fontWeight:600,padding:'3px 0'}}>+ {alertProx.length-4} más en los próximos 3 días</div>}
               </div>
-            )}
-          </div>
-        );
-      })()}
+            </div>
+          )}
+
+          {alertVenc.length>0&&(
+            <div style={{background:'#1e1e1e',border:'1.5px solid #444',borderRadius:10,overflow:'hidden'}}>
+              <div style={{background:'#1e1e1e',padding:'9px 16px',display:'flex',alignItems:'center',gap:9,flexWrap:'wrap'}}>
+                <span style={{fontSize:16}}>⚫</span>
+                <span style={{fontWeight:700,color:'#ff6b6b',fontSize:13.5}}>VENCIDAS — En mora ({alertVenc.length})</span>
+                <span style={{marginLeft:'auto',fontSize:12,color:'rgba(255,120,120,.75)',fontWeight:600}}>Total: {fmt(alertVenc.reduce((a,r)=>a+getSaldo(r),0))}</span>
+              </div>
+              <div style={{padding:'8px 10px',display:'grid',gap:6}}>
+                {alertVenc.slice(0,5).map((r,i)=>(
+                  <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#2a2a2a',borderRadius:7,padding:'9px 12px',border:'1px solid #444',flexWrap:'wrap'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:7,flex:1,minWidth:0}}>
+                      <span style={{background:'#3a3a3a',color:'#ff8a80',borderRadius:5,padding:'2px 7px',fontSize:10.5,fontWeight:700,whiteSpace:'nowrap'}}>#{r.prestamo_id}</span>
+                      <span style={{fontWeight:700,color:'#fff',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(loans.find(x=>Number(x.id)===Number(r.prestamo_id))||{}).cliente||r.cliente}</span>
+                      <span style={{color:'#aaa',fontSize:11,whiteSpace:'nowrap'}}>Cuota {r.n_cuota}</span>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:9}}>
+                      <span style={{fontSize:11,color:'#ff8a80',fontWeight:700,background:'rgba(255,100,100,.15)',borderRadius:5,padding:'3px 9px'}}>{Math.abs(alertDiffMap.get(r.id))} d. atrás</span>
+                      <span style={{fontWeight:700,color:'#ff6b6b',fontSize:14}}>{fmt(getSaldo(r))}</span>
+                      <button className="btn btn-sm" style={{background:'#333',border:'1px solid #555',color:'#ff8a80',padding:'6px 13px',fontSize:12}} onClick={()=>{setPayingRow(r);goTo('payments');}}>Cobrar</button>
+                    </div>
+                  </div>
+                ))}
+                {alertVenc.length>5&&<div style={{textAlign:'center',fontSize:12,color:'#ff8a80',fontWeight:600,padding:'3px 0'}}>+ {alertVenc.length-5} más en mora</div>}
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
 
       {/* KPI STRIP */}
       <div className='kpi-grid' style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:10,marginBottom:14}}>
@@ -1246,11 +1262,11 @@ function NuevoPrestamo({onCreate}){
 
           {dbErr&&<div style={{padding:'10px 14px',background:'#fde8e8',border:'1px solid #f5a5a5',borderRadius:6,color:'var(--red)',fontSize:13,fontWeight:600,marginBottom:12}}>{dbErr}</div>}
           <div style={{display:'flex',gap:10,flexWrap:'wrap'}} className="btn-row">
-            <button className="btn" disabled={saving||!ok} onClick={crearPrestamo}>✓ Ejecutar — Guardar</button>
-            <button className="btn-ol" disabled={!ok} onClick={()=>setShowPrev(true)}>
+            <button className="btn-ol" disabled={!ok} onClick={()=>setShowPrev(true)} style={{fontWeight:700}}>
               <svg viewBox="0 0 24 24" style={{width:13,height:13,stroke:'currentColor',fill:'none',strokeWidth:2,strokeLinecap:'round',display:'inline',marginRight:5}}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               Vista previa
             </button>
+            <button className="btn" disabled={saving||!ok} onClick={crearPrestamo}>✓ Ejecutar — Guardar</button>
             <button className="btn-ol btn-sm" style={{fontSize:11,color:'var(--grey)'}} onClick={async()=>{
                 const token=SKEY;
                 const H={'Content-Type':'application/json','apikey':SKEY,'Authorization':'Bearer '+token,'Prefer':'return=representation'};
@@ -1272,15 +1288,142 @@ function NuevoPrestamo({onCreate}){
   );
 }
 
+/* ══ EDITAR PRÉSTAMO MODAL ══════════════════════════════════════ */
+function EditarModal({loan, onClose, onSave}){
+  const[f,setF]=useState({
+    cliente:loan.cliente||'',
+    garante:loan.garante||'',
+    referencia:loan.referencia||'',
+    clienteExterno:loan.cliente_externo||'NO',
+    fechaPrestamo:loan.fecha_prestamo||todayStr(),
+  });
+  const[recalc,setRecalc]=useState(true);
+  const[saving,setSaving]=useState(false);
+  const[err,setErr]=useState('');
+  const s=(k,v)=>setF(p=>({...p,[k]:v}));
+  const fechaCambiada=f.fechaPrestamo!==loan.fecha_prestamo;
+
+  async function guardar(){
+    if(!f.cliente.trim()){setErr('El nombre del cliente es requerido');return;}
+    setSaving(true);setErr('');
+    try{
+      await onSave(loan,f,recalc&&fechaCambiada);
+      onClose();
+    }catch(ex){setErr(ex.message);}
+    setSaving(false);
+  }
+
+  const D='#1B4F45';
+  const meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',zIndex:600,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:480,boxShadow:'0 20px 60px rgba(0,0,0,.3)',overflow:'hidden',maxHeight:'90vh',overflowY:'auto'}}>
+        {/* Header */}
+        <div style={{background:D,padding:'16px 22px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div>
+            <div style={{color:'rgba(255,255,255,.6)',fontSize:10.5,letterSpacing:'.12em',textTransform:'uppercase',marginBottom:3}}>Editar</div>
+            <div style={{color:'#fff',fontWeight:700,fontSize:16}}>Préstamo #{loan.id} — {loan.cliente}</div>
+          </div>
+          <button onClick={onClose} style={{background:'rgba(255,255,255,.12)',border:'none',color:'#fff',borderRadius:7,width:30,height:30,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
+        </div>
+
+        <div style={{padding:'20px 22px',display:'grid',gap:14}}>
+          {/* Cliente */}
+          <div>
+            <span className="lbl">Nombre del cliente *</span>
+            <input className="inp" value={f.cliente} onChange={e=>s('cliente',e.target.value)} placeholder="Nombre completo"/>
+          </div>
+
+          {/* Garante + Referencia */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}} className="form-cols">
+            <div>
+              <span className="lbl">Garante</span>
+              <input className="inp" value={f.garante} onChange={e=>s('garante',e.target.value)} placeholder="Nombre del garante"/>
+            </div>
+            <div>
+              <span className="lbl">Referenciado por</span>
+              <input className="inp" value={f.referencia} onChange={e=>s('referencia',e.target.value)} placeholder="Nombre del referente"/>
+            </div>
+          </div>
+
+          {/* Cliente externo */}
+          <div>
+            <span className="lbl">¿Cliente externo?</span>
+            <select className="inp" value={f.clienteExterno} onChange={e=>s('clienteExterno',e.target.value)}>
+              <option value="NO">NO</option><option value="SÍ">SÍ</option>
+            </select>
+          </div>
+
+          {/* Fecha préstamo */}
+          <div>
+            <span className="lbl">Fecha del préstamo</span>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <select className="inp" style={{width:'auto',minWidth:70}} value={f.fechaPrestamo.split('-')[2]||'01'}
+                onChange={e=>{const[y,mo]=f.fechaPrestamo.split('-');s('fechaPrestamo',y+'-'+mo+'-'+e.target.value);}}>
+                {Array.from({length:31},(_,i)=><option key={i+1} value={String(i+1).padStart(2,'0')}>{i+1}</option>)}
+              </select>
+              <select className="inp" style={{width:'auto',minWidth:110}} value={f.fechaPrestamo.split('-')[1]||'01'}
+                onChange={e=>{const[y,,d]=f.fechaPrestamo.split('-');s('fechaPrestamo',y+'-'+e.target.value+'-'+d);}}>
+                {meses.map((m,i)=><option key={i} value={String(i+1).padStart(2,'0')}>{m}</option>)}
+              </select>
+              <select className="inp" style={{width:'auto',minWidth:80}} value={f.fechaPrestamo.split('-')[0]||'2025'}
+                onChange={e=>{const[,mo,d]=f.fechaPrestamo.split('-');s('fechaPrestamo',e.target.value+'-'+mo+'-'+d);}}>
+                {[2023,2024,2025,2026,2027,2028].map(y=><option key={y}>{y}</option>)}
+              </select>
+            </div>
+            {fechaCambiada&&(
+              <div style={{marginTop:10,background:'#fffbf0',border:'1px solid #f59e0b',borderRadius:7,padding:'10px 13px'}}>
+                <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+                  <input type="checkbox" id="recalc" checked={recalc} onChange={e=>setRecalc(e.target.checked)} style={{marginTop:2,accentColor:D,width:15,height:15}}/>
+                  <label htmlFor="recalc" style={{fontSize:12.5,color:'#92400e',cursor:'pointer',lineHeight:1.4}}>
+                    <strong>Recalcular fechas del cronograma</strong><br/>
+                    <span style={{fontSize:11.5,opacity:.8}}>Cambia de <b>{fmtD(loan.fecha_prestamo)}</b> a <b>{fmtD(f.fechaPrestamo)}</b>. Todas las fechas de pago se ajustarán proporcionalmente.</span>
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Info no editable */}
+          <div style={{background:'#f5f8f5',borderRadius:8,padding:'11px 14px',border:'1px solid #e0eae0'}}>
+            <div style={{fontSize:11,color:'#888',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>Datos financieros (no editables)</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:12.5}}>
+              {[['Monto',fmt(loan.monto)],['Tasa',(N(loan.tasa)*100).toFixed(1)+'%'],['Tipo',loan.tipo],['N° Cuotas',loan.cuotas+' cuotas']].map(([k,v])=>(
+                <div key={k} style={{display:'flex',justifyContent:'space-between',color:'#555'}}>
+                  <span style={{color:'#999'}}>{k}:</span><span style={{fontWeight:600,color:'#333'}}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:11,color:'#bbb',marginTop:7}}>Para cambiar monto/tasa/cuotas: elimina y crea uno nuevo.</div>
+          </div>
+
+          {err&&<div style={{background:'#fde8e8',border:'1px solid #f5a5a5',borderRadius:7,padding:'10px 13px',color:'var(--red)',fontSize:13,fontWeight:600}}>{err}</div>}
+
+          <div style={{display:'flex',gap:10,justifyContent:'flex-end',paddingTop:4}}>
+            <button className="btn-ol" onClick={onClose} disabled={saving}>Cancelar</button>
+            <button className="btn" onClick={guardar} disabled={saving}>
+              {saving?'Guardando...':'✓ Guardar cambios'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 /* ══ PRÉSTAMOS ══════════════════════════════════════════════════ */
-function Prestamos({loans,sched,onDelete,onVer,onPagar}){
+function Prestamos({loans,sched,onDelete,onVer,onPagar,onEditar}){
   const[q,setQ]=useState('');
+  const[editLoan,setEditLoan]=useState(null);
   if(!Array.isArray(loans)||!Array.isArray(sched))return<div style={{padding:30,textAlign:'center',color:'var(--grey)'}}>Cargando...</div>;
   const fl=loans.filter(l=>l.cliente.toLowerCase().includes(q.toLowerCase())||String(l.id).includes(q));
   const cob=id=>sched.filter(r=>r.prestamo_id===id&&r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
   const sig=id=>sched.filter(r=>r.prestamo_id===id&&!['Pagado','Adelantado'].includes(getEst(r))).sort((a,b)=>a.n_cuota-b.n_cuota)[0];
   return(
     <div style={{animation:'fadeIn .3s ease'}}>
+      {editLoan&&<EditarModal loan={editLoan} onClose={()=>setEditLoan(null)} onSave={async(l,d,rc)=>{await onEditar(l,d,rc);setEditLoan(null);}}/>}
       <div><div className="pg-ey">Portafolio</div><div className="pg-ti">Préstamos</div></div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:13,flexWrap:'wrap'}}>
         <span style={{fontSize:13,color:'var(--grey)'}}>{fl.length} préstamo{fl.length!==1?'s':''}</span>
@@ -1333,6 +1476,7 @@ function Prestamos({loans,sched,onDelete,onVer,onPagar}){
                   <div style={{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
                     <button className="btn-ol btn-sm" onClick={()=>onVer(l)}>Ver</button>
                     {s2&&<button className="btn btn-sm" onClick={()=>onPagar(s2)}>Pagar</button>}
+                    <button className="btn-ol btn-sm" style={{color:'#555',borderColor:'#ccc'}} onClick={()=>setEditLoan(l)}>✏</button>
                     <button className="btn-del" onClick={()=>onDelete(l.id)}>×</button>
                   </div>
                 </td>
@@ -1625,7 +1769,7 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
   const[monto,setMonto]=useState('');
   const[mora,setMora]=useState('');
   const[tipo,setTipo]=useState('NORMAL');
-  const[fecha,setFecha]=useState(new Date().toISOString().split('T')[0]);
+  const[fecha,setFecha]=useState(todayStr());
   const[saving,setSaving]=useState(false);
   const[err,setErr]=useState('');
 
@@ -1765,7 +1909,7 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
             </div>
             <div>
               <span className="lbl">Fecha de pago</span>
-              <input className="inp" type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/>
+              <DatePicker value={fecha} onChange={setFecha}/>
             </div>
           </div>
           {err&&<div style={{padding:'8px 18px',color:'var(--red)',fontSize:13,fontWeight:600}}>{err}</div>}
@@ -1887,7 +2031,7 @@ function ExportarExcel({loans,sched}){
     XL.utils.book_append_sheet(wb,ws,'Préstamos');
     XL.utils.book_append_sheet(wb,ws2,'Cronograma');
 
-    const fecha=new Date().toISOString().split('T')[0];
+    const fecha=todayStr();
     XL.writeFile(wb,'CreditoSanJuan_'+fecha+'.xlsx');
   }
 
