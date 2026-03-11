@@ -308,7 +308,7 @@ function getEstPrestamo(cuotas){
   const pagadas=ests.filter(e=>e==='Pagado'||e==='Adelantado').length;
   if(pagadas>=cuotas.length)return'CANCELADO';
   if(ests.some(e=>e==='Vencido'))return'VENCIDO';
-  if(pagadas>0)return'EN CURSO';
+  if(pagadas>0||ests.some(e=>e==='Parcial'||e==='Solo int.'))return'EN CURSO';
   return'ACTIVO';
 }
 function genCrono(loan,pid){
@@ -792,16 +792,31 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
   const nPag=sched.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).length;
   const nPend=sched.filter(r=>getEst(r)==='Pendiente').length;
   const nVenc=venc.length;
-  const totInt=sched.reduce((a,r)=>a+N(r.interes_cuota),0);
-  const totMora=sched.reduce((a,r)=>a+N(r.mora||0),0);
+  // ── Cálculos financieros CORRECTOS ──
+  // Solo cuotas realmente cobradas (Pagado, Adelantado, Solo int.)
+  const cuotasPagadas=sched.filter(r=>['Pagado','Adelantado','Solo int.'].includes(getEst(r)));
+  const cuotasPagadasCapital=sched.filter(r=>['Pagado','Adelantado'].includes(getEst(r)));
+  // Interés COBRADO = cuotas completamente pagadas + interés cubierto en pagos parciales (interés primero)
+  const totInt=sched.filter(r=>r.monto_pagado).reduce((a,r)=>{
+    const est=getEst(r);
+    if(['Pagado','Adelantado','Solo int.'].includes(est))return a+N(r.interes_cuota);
+    if(est==='Parcial')return a+Math.min(N(r.interes_cuota),N(r.monto_pagado));
+    return a;
+  },0);
+  // Capital RECUPERADO = capital_cuota de cuotas pagadas/adelantadas (no incluye solo-interés)
+  const totCapRecuperado=cuotasPagadasCapital.reduce((a,r)=>a+N(r.capital_cuota),0);
+  // Mora COBRADA = solo de cuotas que tienen pago registrado
+  const totMora=sched.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.mora||0),0);
   const total=sched.length||1;
+  const nParc=sched.filter(r=>getEst(r)==='Parcial').length;
+  const nSolo=sched.filter(r=>getEst(r)==='Solo int.').length;
 
   // Last 7 months data
   const meses=Array.from({length:7},(_,i)=>{
     const d=new Date();d.setMonth(d.getMonth()-(6-i));
     const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     const lbl=['En','Fe','Ma','Ab','My','Jn','Jl','Ag','Se','Oc','No','Di'][d.getMonth()];
-    const cob=sched.filter(r=>r.fecha_pago?.substring(0,7)===key).reduce((a,r)=>a+N(r.monto_pagado),0);
+    const cob=sched.filter(r=>r.fecha_pago?.substring(0,7)===key).reduce((a,r)=>a+N(r.monto_pagado)+N(r.mora||0),0);
     const pre=loans.filter(l=>l.fecha_prestamo?.substring(0,7)===key).reduce((a,l)=>a+N(l.monto),0);
     const mor=sched.filter(r=>r.fecha_pago?.substring(0,7)===key).reduce((a,r)=>a+N(r.mora||0),0);
     return{lbl,cob,pre,mor};
@@ -828,12 +843,12 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
   const D='#1B4F45'; const T='#2d8a7a'; const T2='#379F8B'; const M='#d4ede5';
 
   const kpis=[
-    {l:'Capital prestado', v:fmt(totPres),  sub:loans.length+' préstamos',  bg:'#1B4F45', tc:'#fff',    sc:'rgba(255,255,255,.55)'},
-    {l:'Total cobrado',    v:fmt(totCob),   sub:nPag+' cuotas pagadas',    bg:'#2d8a7a', tc:'#fff',    sc:'rgba(255,255,255,.55)'},
-    {l:'Por cobrar',       v:fmt(porCobrar),sub:nPend+' cuotas pendientes',bg:'#e8f0e8', tc:'#1B4F45', sc:'#5a7a5a'},
+    {l:'Capital prestado', v:fmt(totPres),        sub:loans.length+' préstamos',         bg:'#1B4F45', tc:'#fff',    sc:'rgba(255,255,255,.55)'},
+    {l:'Total cobrado',    v:fmt(totCob+totMora), sub:sched.filter(r=>r.monto_pagado).length+' cobros registrados',             bg:'#2d8a7a', tc:'#fff',    sc:'rgba(255,255,255,.55)'},
+    {l:'Por cobrar',       v:fmt(porCobrar),      sub:(nPend+nVenc+nParc+nSolo)+' cuotas por cobrar', bg:'#e8f0e8', tc:'#1B4F45', sc:'#5a7a5a'},
     {l:'Monto vencido',    v:fmt(montoVenc),sub:nVenc+' cuotas vencidas',  bg:'#fde8e8', tc:'#b52a2a', sc:'#c97070'},
     {l:'Mora acumulada',   v:fmt(totMora),  sub:'mora registrada',          bg:'#fff5e6', tc:'#a0620a', sc:'#c09050'},
-    {l:'Interés generado', v:fmt(totInt),   sub:'sobre capital total',      bg:'#e4f4f0', tc:'#1B6B5A', sc:'#5a8a80'},
+    {l:'Interés cobrado',  v:fmt(totInt),   sub:'de cuotas pagadas',        bg:'#e4f4f0', tc:'#1B6B5A', sc:'#5a8a80'},
   ];
 
   // ── Alertas de cobro ──
@@ -955,7 +970,7 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
       </div>
 
       {/* CHARTS ROW */}
-      <div className='dash-row-2' className='dash-row-2' style={{display:'grid',gridTemplateColumns:'1.6fr 1fr',gap:12,marginBottom:12}}>
+      <div className='dash-row-2' style={{display:'grid',gridTemplateColumns:'1.6fr 1fr',gap:12,marginBottom:12}}>
 
         {/* TENDENCIA DE COBROS */}
         <div className="card">
@@ -1007,12 +1022,14 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
         <div className="card">
           <div style={{padding:'13px 18px 0',fontWeight:700,fontSize:13.5,color:'var(--ink)',marginBottom:10}}>Estado de cuotas</div>
           <div style={{padding:'0 18px 14px',display:'flex',gap:16,alignItems:'center'}}>
-            <Donut segs={[{v:nPag,c:T},{v:nPend,c:'#2356a0'},{v:nVenc,c:'#b52a2a'}]} total={total} cv={sched.length} cl="cuotas"/>
+            <Donut segs={[{v:nPag,c:T},{v:nPend,c:'#2356a0'},{v:nVenc,c:'#b52a2a'},{v:nParc,c:'#a0620a'},{v:nSolo,c:'#6b2fa0'}]} total={total} cv={sched.length} cl="cuotas"/>
             <div style={{flex:1,display:'grid',gap:10}}>
               {[
                 {l:'Pagadas',   n:nPag,  c:T,         pct:total>0?Math.round(nPag/total*100):0},
                 {l:'Pendientes',n:nPend, c:'#2356a0',  pct:total>0?Math.round(nPend/total*100):0},
                 {l:'Vencidas',  n:nVenc, c:'#b52a2a',  pct:total>0?Math.round(nVenc/total*100):0},
+                ...(nParc>0?[{l:'Parciales', n:nParc, c:'#a0620a', pct:total>0?Math.round(nParc/total*100):0}]:[]),
+                ...(nSolo>0?[{l:'Solo int.', n:nSolo, c:'#6b2fa0', pct:total>0?Math.round(nSolo/total*100):0}]:[]),
               ].map(i=>(
                 <div key={i.l}>
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:3,fontSize:12}}>
@@ -1033,7 +1050,7 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
       </div>
 
       {/* SECOND ROW */}
-      <div className='dash-row-2' className='dash-row-2' style={{display:'grid',gridTemplateColumns:'1fr 1.4fr',gap:12,marginBottom:12}}>
+      <div className='dash-row-2' style={{display:'grid',gridTemplateColumns:'1fr 1.4fr',gap:12,marginBottom:12}}>
 
         {/* TOP CLIENTES */}
         <div className="card">
@@ -1071,10 +1088,10 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
           <div style={{padding:'0 18px 14px',display:'grid',gap:1}}>
             {[
               {l:'Capital prestado',    c:D,           v:totPres},
-              {l:'Capital cobrado',     c:T,           v:totCob},
-              {l:'En calle (saldo)',     c:'#a0620a',   v:Math.max(0,totPres-totCob)},
-              {l:'Interés generado',    c:T2,          v:totInt},
-              {l:'Mora acumulada',      c:'#b52a2a',   v:totMora},
+              {l:'Capital recuperado',  c:T,           v:totCapRecuperado},
+              {l:'Capital en calle',    c:'#a0620a',   v:Math.max(0,totPres-totCapRecuperado)},
+              {l:'Interés cobrado',     c:T2,          v:totInt},
+              {l:'Mora cobrada',        c:'#b52a2a',   v:totMora},
             ].map((row,i)=>{
               const pct=totPres>0?Math.min(100,Math.round(row.v/totPres*100)):0;
               return(
@@ -1650,6 +1667,7 @@ function Cronograma({loans,sched,viewLoan,onPagar}){
   const totBase=rows.reduce((a,r)=>a+N(r.cuota_base),0);
   const totPag=rows.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
   const totSaldo=rows.reduce((a,r)=>a+getSaldo(r),0);
+  const totMoraRows=rows.reduce((a,r)=>a+N(r.mora||0),0);
   const cuota=rows.length>0?rows[0].cuota_base:0;
 
   const filtered=React.useMemo(()=>{
@@ -1751,7 +1769,7 @@ function Cronograma({loans,sched,viewLoan,onPagar}){
             })}</tbody>
             <tfoot><tr>
               <td colSpan={6} style={{textAlign:'right',fontSize:11,textTransform:'uppercase',letterSpacing:'.07em'}}>Totales</td>
-              <td>{fmt(totBase)}</td><td/><td>{fmt(totBase)}</td><td/>
+              <td>{fmt(totBase)}</td><td style={{color:'var(--red)'}}>{totMoraRows>0?fmt(totMoraRows):''}</td><td style={{fontWeight:700,color:'var(--dark)'}}>{fmt(totBase+totMoraRows)}</td><td/>
               <td style={{color:'var(--green)'}}>{fmt(totPag)}</td>
               <td colSpan={2}/><td style={{color:totSaldo>0?'var(--red)':'var(--green)'}}>{fmt(totSaldo)}</td><td/>
             </tr></tfoot>
