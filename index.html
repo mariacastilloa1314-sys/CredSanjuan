@@ -1507,19 +1507,19 @@ function Prestamos({loans,sched,onDelete,onVer,onPagar,onEditar}){
 function CronogramaModal({loan,rows,onClose,isBorrador=false}){
   const modalRef=React.useRef(null);
   const totBase=rows.reduce((a,r)=>a+N(r.cuota_base),0);
-  const cuota=rows.length>0?rows[0].cuota_base:0;
   const totCap=rows.reduce((a,r)=>a+N(r.capital_cuota),0);
   const totInt=rows.reduce((a,r)=>a+N(r.interes_cuota),0);
   const totDeg=rows.reduce((a,r)=>a+N(r.desgravamen),0);
-  const hasGO=rows.some(r=>N(r.gasto_operativo)>0);
+  const totGO=rows.reduce((a,r)=>a+N(r.gasto_operativo||0),0);
   const hasDeg=rows.some(r=>N(r.desgravamen)>0);
-  const D='#1B4F45'; const T='#2d8a7a'; const M='#d4ede5'; const L='#e8f0e8';
+  const hasGO=rows.some(r=>N(r.gasto_operativo)>0);
+  const T='#2d8a7a'; const D='#1B4F45'; const MINT='#d4ede5';
   const NF="'DM Sans',sans-serif";
 
   async function descargarImagen(){
     const el=modalRef.current;
     if(!el||!window.html2canvas){alert('html2canvas no disponible');return;}
-    const btn=document.querySelector('.pm-actions');
+    const btn=document.getElementById('pm-btns');
     if(btn)btn.style.display='none';
     const canvas=await window.html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
     if(btn)btn.style.display='';
@@ -1532,7 +1532,7 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
   async function copiarImagen(){
     const el=modalRef.current;
     if(!el||!window.html2canvas){alert('html2canvas no disponible');return;}
-    const btn=document.querySelector('.pm-actions');
+    const btn=document.getElementById('pm-btns');
     if(btn)btn.style.display='none';
     const canvas=await window.html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
     if(btn)btn.style.display='';
@@ -1541,119 +1541,107 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
         await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
         alert('✓ Imagen copiada al portapapeles');
       },'image/png');
-    }catch(ex){
-      alert('No se pudo copiar. Usa "Descargar imagen" en su lugar.');
-    }
+    }catch(ex){alert('No se pudo copiar. Usa "Descargar imagen".');}
   }
 
   function imprimir(){
     const el=modalRef.current;
     const w=window.open('','_blank');
-    w.document.write('<html><head><meta charset="UTF-8"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:"DM Sans",sans-serif;background:#fff}</style></head><body>'+el.innerHTML+'</body></html>');
+    w.document.write('<html><head><meta charset="UTF-8"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:"DM Sans",sans-serif;background:#fff}</style></head><body>'+el.innerHTML+'</body></html>');
     w.document.close();
     setTimeout(()=>{w.print();},800);
   }
 
-  const thS={padding:'10px 14px',textAlign:'right',color:'#fff',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',background:T,borderBottom:'none'};
-  const tdS=(i)=>({padding:'9px 14px',textAlign:'right',borderBottom:'1px solid #edf2ed',color:'#222',background:i%2===0?'#fff':'#f6faf7',fontSize:13});
-
   return(
     <div className="print-modal-bg" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div>
-        <div className="pm-actions" style={{display:'flex',gap:10,marginBottom:12,justifyContent:'flex-end',flexWrap:'wrap'}}>
-          <button style={{background:'rgba(255,255,255,.9)',border:'1.5px solid rgba(255,255,255,.3)',color:'#333',fontSize:12,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontWeight:600}} onClick={onClose}>✕ Cerrar</button>
-          <button style={{background:'rgba(255,255,255,.9)',border:'1.5px solid rgba(255,255,255,.3)',color:'#333',fontSize:12,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontWeight:600}} onClick={imprimir}>🖨 Imprimir / PDF</button>
-          <button style={{background:'rgba(255,255,255,.9)',border:'1.5px solid rgba(255,255,255,.3)',color:'#333',fontSize:12,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontWeight:600}} onClick={copiarImagen}>📋 Copiar imagen</button>
-          <button style={{background:D,border:'none',color:'#fff',fontSize:12,padding:'8px 18px',borderRadius:6,cursor:'pointer',fontWeight:600}} onClick={descargarImagen}>⬇ Descargar</button>
+      <div style={{display:'flex',flexDirection:'column',maxHeight:'100dvh',width:'100%',maxWidth:560,margin:'0 auto'}}>
+
+        {/* BARRA FIJA SIEMPRE VISIBLE */}
+        <div id="pm-btns" style={{position:'sticky',top:0,zIndex:10,background:'rgba(15,40,35,.97)',padding:'10px 12px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',borderBottom:'1px solid rgba(255,255,255,.15)',flexShrink:0}}>
+          <button onClick={onClose} style={{background:'#e53935',border:'none',color:'#fff',fontWeight:700,fontSize:13,padding:'8px 18px',borderRadius:7,cursor:'pointer'}}>✕ Cerrar</button>
+          <button onClick={copiarImagen} style={{background:'rgba(255,255,255,.12)',border:'1px solid rgba(255,255,255,.2)',color:'#fff',fontSize:12,padding:'8px 14px',borderRadius:7,cursor:'pointer',fontWeight:600}}>📋 Copiar</button>
+          <button onClick={descargarImagen} style={{background:'rgba(255,255,255,.12)',border:'1px solid rgba(255,255,255,.2)',color:'#fff',fontSize:12,padding:'8px 14px',borderRadius:7,cursor:'pointer',fontWeight:600}}>⬇ Guardar</button>
+          <button onClick={imprimir} style={{background:'rgba(255,255,255,.12)',border:'1px solid rgba(255,255,255,.2)',color:'#fff',fontSize:12,padding:'8px 14px',borderRadius:7,cursor:'pointer',fontWeight:600}}>🖨 Imprimir</button>
         </div>
 
-        <div className="print-modal" ref={modalRef} style={{fontFamily:NF,color:'#111',borderRadius:0}}>
+        {/* CONTENIDO SCROLLEABLE */}
+        <div style={{overflowY:'auto',WebkitOverflowScrolling:'touch',flexGrow:1}}>
+          <div className="print-modal" ref={modalRef} style={{fontFamily:NF,color:'#111',background:'#fff'}}>
 
-          {/* HEADER centrado con fondo teal */}
-          <div style={{background:T,padding:'18px 32px',textAlign:'center'}}>
-            <div style={{fontSize:11,color:'rgba(255,255,255,.6)',letterSpacing:'.22em',textTransform:'uppercase',marginBottom:6}}>Crédito San Juan</div>
-            <div style={{fontFamily:NF,fontSize:22,fontWeight:700,color:'#fff',letterSpacing:'.1em',textTransform:'uppercase'}}>CRONOGRAMA DE PAGOS</div>
-            {isBorrador&&<div style={{marginTop:8,display:'inline-block',background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.3)',borderRadius:4,padding:'3px 12px',fontSize:11,letterSpacing:'.12em',textTransform:'uppercase',color:'rgba(255,255,255,.8)',fontWeight:700}}>Vista previa — no guardado</div>}
-          </div>
+            {/* CABECERA teal clarito */}
+            <div style={{background:T,padding:'18px 24px',textAlign:'center'}}>
+              <div style={{fontSize:10,color:'rgba(255,255,255,.55)',letterSpacing:'.22em',textTransform:'uppercase',marginBottom:4}}>Crédito San Juan</div>
+              <div style={{fontSize:19,fontWeight:700,color:'#fff',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:isBorrador?8:0}}>CRONOGRAMA DE PAGOS</div>
+              {isBorrador&&<div style={{display:'inline-block',background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.25)',borderRadius:4,padding:'3px 12px',fontSize:10.5,color:'rgba(255,255,255,.85)',fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase'}}>Vista previa — no guardado</div>}
+            </div>
 
-          {/* INFO GRID — 2 columnas, sin "titular" en header */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',borderBottom:'2px solid '+L,background:'#fff'}}>
-            <div style={{padding:'14px 22px',borderRight:'1px solid '+L}}>
-              {[['Cliente',loan.cliente],['Monto',fmt(loan.monto)],['Tipo',loan.tipo],['N° Cuotas',loan.cuotas+' cuotas']].map(([k,v])=>(
-                <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid #f0f5f0',fontSize:12.5}}>
-                  <span style={{color:'#666',fontWeight:600}}>{k}:</span>
-                  <span style={{fontWeight:k==='Cliente'?700:500,color:'#111'}}>{v}</span>
-                </div>
-              ))}
+            {/* DATOS PRÉSTAMO */}
+            <div style={{padding:'14px 20px 10px',background:'#fff',borderBottom:'1px solid #ddd'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
+                {[
+                  ['Cliente', loan.cliente],
+                  ['Garante', loan.garante||'—'],
+                  ['Monto prestado', fmt(loan.monto)],
+                  ['Tasa de interés', (N(loan.tasa)*100).toFixed(1)+'% '+((loan.tipo||'').toLowerCase())],
+                  ['N° de cuotas', rows.length+' cuotas'],
+                  ['Tipo', loan.tipo||'—'],
+                  ...(hasDeg?[['Desgravamen', fmt(rows[0]?.desgravamen||0)+' / cuota']]:[] ),
+                  ['Fecha inicio', fmtD(loan.fecha_prestamo)],
+                ].map(([k,v])=>(
+                  <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid #f0f0f0',fontSize:12.5,gap:8}}>
+                    <span style={{color:'#888'}}>{k}</span>
+                    <span style={{fontWeight:700,color:'#111',textAlign:'right'}}>{v}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{padding:'14px 22px'}}>
-              {[['Garante',loan.garante||'—'],['Tasa',(N(loan.tasa)*100).toFixed(1)+'%'],['Desgravamen',fmt(loan.desgravamen||0)],['Fecha del préstamo',fmtD(loan.fecha_prestamo)]].map(([k,v])=>(
-                <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid #f0f5f0',fontSize:12.5}}>
-                  <span style={{color:'#666',fontWeight:600}}>{k}:</span>
-                  <span style={{fontWeight:500,color:'#111'}}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
 
-          {/* CUOTA + TOTAL — dark green, números en DM Sans bold condensed */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',background:D}}>
-            <div style={{padding:'16px 24px',textAlign:'center',borderRight:'1px solid rgba(255,255,255,.12)'}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,.5)',textTransform:'uppercase',letterSpacing:'.2em',marginBottom:7,fontWeight:600}}>CUOTA</div>
-              <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:28,fontWeight:700,color:'#fff',letterSpacing:'-.03em',lineHeight:1}}>{fmt(cuota)}</div>
-            </div>
-            <div style={{padding:'16px 24px',textAlign:'center'}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,.5)',textTransform:'uppercase',letterSpacing:'.2em',marginBottom:7,fontWeight:600}}>MONTO TOTAL</div>
-              <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:28,fontWeight:700,color:'#fff',letterSpacing:'-.03em',lineHeight:1}}>{fmt(totBase)}</div>
-            </div>
-          </div>
-
-          {/* TABLE */}
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}>
-            <thead>
-              <tr>
-                <th style={{...thS,textAlign:'center',width:42}}>N° Cuota</th>
-                <th style={{...thS,textAlign:'left'}}>Fecha Pago</th>
-                <th style={thS}>Capital</th>
-                <th style={thS}>Interés</th>
-                {hasDeg&&<th style={thS}>Desgrav.</th>}
-                {hasGO&&<th style={thS}>G. Oper.</th>}
-                <th style={{...thS,background:D}}>Cuota Base</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r,i)=>(
-                <tr key={r.id}>
-                  <td style={{...tdS(i),textAlign:'center',fontWeight:700,color:D,background:i%2===0?L:M}}>{r.n_cuota}</td>
-                  <td style={{...tdS(i),textAlign:'left'}}>{fmtD(r.fecha_vence)}</td>
-                  <td style={tdS(i)}>{fmt(r.capital_cuota)}</td>
-                  <td style={tdS(i)}>{fmt(r.interes_cuota)}</td>
-                  {hasDeg&&<td style={tdS(i)}>{fmt(r.desgravamen)}</td>}
-                  {hasGO&&<td style={tdS(i)}>{fmt(r.gasto_operativo||0)}</td>}
-                  <td style={{...tdS(i),fontWeight:700,color:D,background:i%2===0?'#dff5eb':'#cbeedf'}}>{fmt(r.cuota_base)}</td>
+            {/* TABLA */}
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}>
+              <thead>
+                <tr style={{background:T}}>
+                  <th style={{padding:'9px 10px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'center',width:38}}>N°</th>
+                  <th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'left'}}>Fecha</th>
+                  <th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'right'}}>Capital</th>
+                  <th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'right'}}>Interés</th>
+                  {hasDeg&&<th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'right'}}>Desgrav.</th>}
+                  {hasGO&&<th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'right'}}>G.Oper.</th>}
+                  <th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'right'}}>Cuota</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{background:L}}>
-                <td style={{padding:'9px 14px',textAlign:'center',fontWeight:700,color:D,borderTop:'2px solid '+T,fontSize:12}}></td>
-                <td style={{padding:'9px 14px',textAlign:'left',fontWeight:700,color:'#555',borderTop:'2px solid '+T,fontSize:11,textTransform:'uppercase',letterSpacing:'.07em'}}>Totales</td>
-                <td style={{padding:'9px 14px',textAlign:'right',fontWeight:700,color:D,borderTop:'2px solid '+T}}>{fmt(totCap)}</td>
-                <td style={{padding:'9px 14px',textAlign:'right',fontWeight:700,color:D,borderTop:'2px solid '+T}}>{fmt(totInt)}</td>
-                {hasDeg&&<td style={{padding:'9px 14px',textAlign:'right',fontWeight:700,color:D,borderTop:'2px solid '+T}}>{fmt(totDeg)}</td>}
-                {hasGO&&<td style={{padding:'9px 14px',textAlign:'right',fontWeight:700,color:D,borderTop:'2px solid '+T}}>{fmt(rows.reduce((a,r)=>a+N(r.gasto_operativo||0),0))}</td>}
-                <td style={{padding:'9px 14px',textAlign:'right',fontWeight:700,color:D,borderTop:'2px solid '+T,fontSize:14}}>{fmt(totBase)}</td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((r,i)=>(
+                  <tr key={r.id} style={{borderBottom:'1px solid #e0e0e0'}}>
+                    <td style={{padding:'9px 10px',textAlign:'center',color:'#666',fontSize:12}}>{r.n_cuota}</td>
+                    <td style={{padding:'9px 12px',color:'#333'}}>{fmtD(r.fecha_vence)}</td>
+                    <td style={{padding:'9px 12px',textAlign:'right',color:'#555'}}>{fmt(r.capital_cuota)}</td>
+                    <td style={{padding:'9px 12px',textAlign:'right',color:'#555'}}>{fmt(r.interes_cuota)}</td>
+                    {hasDeg&&<td style={{padding:'9px 12px',textAlign:'right',color:'#555'}}>{fmt(r.desgravamen)}</td>}
+                    {hasGO&&<td style={{padding:'9px 12px',textAlign:'right',color:'#555'}}>{fmt(r.gasto_operativo||0)}</td>}
+                    <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:'#222'}}>{fmt(r.cuota_base)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{background:MINT,borderTop:'2px solid '+T}}>
+                  <td colSpan={2} style={{padding:'10px 12px',fontWeight:700,color:D,fontSize:11,textTransform:'uppercase',letterSpacing:'.05em'}}>Totales</td>
+                  <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:D}}>{fmt(totCap)}</td>
+                  <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:D}}>{fmt(totInt)}</td>
+                  {hasDeg&&<td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:D}}>{fmt(totDeg)}</td>}
+                  {hasGO&&<td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:D}}>{fmt(totGO)}</td>}
+                  <td style={{padding:'10px 12px',textAlign:'right',fontWeight:700,color:D,fontSize:14}}>{fmt(totBase)}</td>
+                </tr>
+              </tfoot>
+            </table>
 
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/* ══ CRONOGRAMA ═════════════════════════════════════════════════ */
+
 function Cronograma({loans,sched,viewLoan,onPagar}){
   if(!Array.isArray(loans)||!Array.isArray(sched))return<div style={{padding:30,textAlign:'center',color:'var(--grey)'}}>Cargando...</div>;
   const[selId,setSelId]=useState(viewLoan?.id??'');
