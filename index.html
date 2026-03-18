@@ -1519,7 +1519,7 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
     if(!el||!window.html2canvas){alert('html2canvas no disponible');return;}
     const btn=document.getElementById('pm-btns');
     if(btn)btn.style.display='none';
-    const canvas=await window.html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+    const canvas=await window.html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff',scrollY:0,scrollX:0,width:el.scrollWidth,height:el.scrollHeight,windowWidth:el.scrollWidth,windowHeight:el.scrollHeight});
     if(btn)btn.style.display='';
     const a=document.createElement('a');
     a.download='cronograma_'+loan.cliente.replace(/\s+/g,'_')+'.png';
@@ -1532,7 +1532,7 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
     if(!el||!window.html2canvas){alert('html2canvas no disponible');return;}
     const btn=document.getElementById('pm-btns');
     if(btn)btn.style.display='none';
-    const canvas=await window.html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+    const canvas=await window.html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff',scrollY:0,scrollX:0,width:el.scrollWidth,height:el.scrollHeight,windowWidth:el.scrollWidth,windowHeight:el.scrollHeight});
     if(btn)btn.style.display='';
     try{
       canvas.toBlob(async(blob)=>{
@@ -1554,7 +1554,7 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
 
   return(
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.72)',zIndex:500,display:'flex',flexDirection:'column',alignItems:'center',overflowY:'auto'}}>
-      <div style={{width:'100%',maxWidth:600,display:'flex',flexDirection:'column',minHeight:'100%'}}>
+      <div style={{width:'100%',maxWidth:600,display:'flex',flexDirection:'column'}}>
 
         {/* BARRA FIJA */}
         <div id="pm-btns" style={{position:'sticky',top:0,zIndex:10,background:'rgba(15,40,35,.97)',padding:'10px 12px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',borderBottom:'1px solid rgba(255,255,255,.15)',flexShrink:0}}>
@@ -1565,7 +1565,7 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
         </div>
 
         {/* CONTENIDO */}
-        <div ref={modalRef} style={{fontFamily:NF,color:'#111',background:'#fff',flexGrow:1}}>
+        <div ref={modalRef} style={{fontFamily:NF,color:'#111',background:'#fff'}}>
 
           {/* CABECERA */}
           <div style={{background:T,padding:'18px 24px',textAlign:'center'}}>
