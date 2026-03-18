@@ -155,9 +155,7 @@ tfoot td{padding:10px 13px;background:var(--light);font-weight:700;color:var(--d
   .pg-ey{font-size:10px}
   .two-col{grid-template-columns:1fr!important}
   .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .print-modal-bg{padding:6px;align-items:flex-start}
-  .print-modal{font-size:11px}
-  .pm-actions{gap:5px;flex-wrap:wrap}
+      .pm-actions{gap:5px;flex-wrap:wrap}
   .pm-actions button{font-size:11px!important;padding:7px 10px!important}
   .card{border-radius:6px;margin-bottom:10px}
   /* Force all inline grid styles to stack on mobile */
@@ -178,8 +176,6 @@ tfoot td{padding:10px 13px;background:var(--light);font-weight:700;color:var(--d
 @keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 /* ─── CRONOGRAMA IMPRIMIBLE ──────────────────── */
-.print-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto}
-.print-modal{background:#fff;width:100%;max-width:780px;border-radius:4px;font-family:'DM Sans',sans-serif;font-size:13px;color:#111}
 .pm-header{background:linear-gradient(135deg,#0d2b1f 0%,#1B4F45 60%,#2d8a7a 100%);padding:28px 36px;position:relative;overflow:hidden}
 .pm-header::before{content:'';position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;border:1px solid rgba(184,151,58,.18)}
 .pm-header::after{content:'';position:absolute;bottom:-30px;right:20px;width:120px;height:120px;border-radius:50%;border:1px solid rgba(184,151,58,.12)}
@@ -216,10 +212,12 @@ tfoot td{padding:10px 13px;background:var(--light);font-weight:700;color:var(--d
 .pm-firma{text-align:center}
 .pm-firma-line{width:160px;border-top:1px solid #bbb;margin:0 auto 5px;padding-top:6px}
 @media print{
-  .print-modal-bg{position:static;background:none;padding:0}
-  .print-modal{max-width:100%;box-shadow:none}
-  .pm-actions{display:none!important}
+      .pm-actions{display:none!important}
 }
+
+.print-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:500;display:flex;align-items:flex-start;justify-content:center;padding:0;overflow-y:auto}
+.print-modal{background:#fff;width:100%;font-family:'DM Sans',sans-serif;font-size:13px;color:#111}
+@media(min-width:600px){.print-modal-bg{padding:24px}}
 </style>
   <!-- PWA / Pantalla de inicio iPhone -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1552,11 +1550,13 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
     setTimeout(()=>{w.print();},800);
   }
 
-  return(
-    <div className="print-modal-bg" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{display:'flex',flexDirection:'column',maxHeight:'100dvh',width:'100%',maxWidth:560,margin:'0 auto'}}>
+  const thStyle={padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',background:T,whiteSpace:'nowrap'};
 
-        {/* BARRA FIJA SIEMPRE VISIBLE */}
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.72)',zIndex:500,display:'flex',flexDirection:'column',alignItems:'center',overflowY:'auto'}}>
+      <div style={{width:'100%',maxWidth:600,display:'flex',flexDirection:'column',minHeight:'100%'}}>
+
+        {/* BARRA FIJA */}
         <div id="pm-btns" style={{position:'sticky',top:0,zIndex:10,background:'rgba(15,40,35,.97)',padding:'10px 12px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',borderBottom:'1px solid rgba(255,255,255,.15)',flexShrink:0}}>
           <button onClick={onClose} style={{background:'#e53935',border:'none',color:'#fff',fontWeight:700,fontSize:13,padding:'8px 18px',borderRadius:7,cursor:'pointer'}}>✕ Cerrar</button>
           <button onClick={copiarImagen} style={{background:'rgba(255,255,255,.12)',border:'1px solid rgba(255,255,255,.2)',color:'#fff',fontSize:12,padding:'8px 14px',borderRadius:7,cursor:'pointer',fontWeight:600}}>📋 Copiar</button>
@@ -1564,56 +1564,56 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
           <button onClick={imprimir} style={{background:'rgba(255,255,255,.12)',border:'1px solid rgba(255,255,255,.2)',color:'#fff',fontSize:12,padding:'8px 14px',borderRadius:7,cursor:'pointer',fontWeight:600}}>🖨 Imprimir</button>
         </div>
 
-        {/* CONTENIDO SCROLLEABLE */}
-        <div style={{overflowY:'auto',WebkitOverflowScrolling:'touch',flexGrow:1}}>
-          <div className="print-modal" ref={modalRef} style={{fontFamily:NF,color:'#111',background:'#fff'}}>
+        {/* CONTENIDO */}
+        <div ref={modalRef} style={{fontFamily:NF,color:'#111',background:'#fff',flexGrow:1}}>
 
-            {/* CABECERA teal clarito */}
-            <div style={{background:T,padding:'18px 24px',textAlign:'center'}}>
-              <div style={{fontSize:10,color:'rgba(255,255,255,.55)',letterSpacing:'.22em',textTransform:'uppercase',marginBottom:4}}>Crédito San Juan</div>
-              <div style={{fontSize:19,fontWeight:700,color:'#fff',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:isBorrador?8:0}}>CRONOGRAMA DE PAGOS</div>
-              {isBorrador&&<div style={{display:'inline-block',background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.25)',borderRadius:4,padding:'3px 12px',fontSize:10.5,color:'rgba(255,255,255,.85)',fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase'}}>Vista previa — no guardado</div>}
+          {/* CABECERA */}
+          <div style={{background:T,padding:'18px 24px',textAlign:'center'}}>
+            <div style={{fontSize:10,color:'rgba(255,255,255,.55)',letterSpacing:'.22em',textTransform:'uppercase',marginBottom:4}}>Crédito San Juan</div>
+            <div style={{fontSize:19,fontWeight:700,color:'#fff',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:isBorrador?8:0}}>CRONOGRAMA DE PAGOS</div>
+            {isBorrador&&<div style={{display:'inline-block',background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.25)',borderRadius:4,padding:'3px 12px',fontSize:10.5,color:'rgba(255,255,255,.85)',fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase'}}>Vista previa — no guardado</div>}
+          </div>
+
+          {/* DATOS PRÉSTAMO */}
+          <div style={{padding:'14px 20px 10px',background:'#fff',borderBottom:'1px solid #ddd'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
+              {[
+                ['Cliente', loan.cliente],
+                ['Garante', loan.garante||'—'],
+                ['Monto prestado', fmt(loan.monto)],
+                ['Tasa de interés', (N(loan.tasa)*100).toFixed(1)+'% '+((loan.tipo||'').toLowerCase())],
+                ['N° de cuotas', rows.length+' cuotas'],
+                ['Tipo', loan.tipo||'—'],
+                ...(hasDeg?[['Desgravamen', fmt(rows[0]?.desgravamen||0)+' / cuota']]:[]),
+                ['Fecha inicio', fmtD(loan.fecha_prestamo)],
+              ].map(([k,v])=>(
+                <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid #f0f0f0',fontSize:12.5,gap:8}}>
+                  <span style={{color:'#888'}}>{k}</span>
+                  <span style={{fontWeight:700,color:'#111',textAlign:'right'}}>{v}</span>
+                </div>
+              ))}
             </div>
+          </div>
 
-            {/* DATOS PRÉSTAMO */}
-            <div style={{padding:'14px 20px 10px',background:'#fff',borderBottom:'1px solid #ddd'}}>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 16px'}}>
-                {[
-                  ['Cliente', loan.cliente],
-                  ['Garante', loan.garante||'—'],
-                  ['Monto prestado', fmt(loan.monto)],
-                  ['Tasa de interés', (N(loan.tasa)*100).toFixed(1)+'% '+((loan.tipo||'').toLowerCase())],
-                  ['N° de cuotas', rows.length+' cuotas'],
-                  ['Tipo', loan.tipo||'—'],
-                  ...(hasDeg?[['Desgravamen', fmt(rows[0]?.desgravamen||0)+' / cuota']]:[] ),
-                  ['Fecha inicio', fmtD(loan.fecha_prestamo)],
-                ].map(([k,v])=>(
-                  <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid #f0f0f0',fontSize:12.5,gap:8}}>
-                    <span style={{color:'#888'}}>{k}</span>
-                    <span style={{fontWeight:700,color:'#111',textAlign:'right'}}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* TABLA */}
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}>
+          {/* TABLA — scroll horizontal en móvil */}
+          <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+            <table style={{width:'100%',minWidth:400,borderCollapse:'collapse',fontSize:12.5}}>
               <thead>
-                <tr style={{background:T}}>
-                  <th style={{padding:'9px 10px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'center',width:38}}>N°</th>
-                  <th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'left'}}>Fecha</th>
-                  <th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'right'}}>Capital</th>
-                  <th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'right'}}>Interés</th>
-                  {hasDeg&&<th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'right'}}>Desgrav.</th>}
-                  {hasGO&&<th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'right'}}>G.Oper.</th>}
-                  <th style={{padding:'9px 12px',color:'#fff',fontWeight:600,fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em',textAlign:'right'}}>Cuota</th>
+                <tr>
+                  <th style={{...thStyle,textAlign:'center',width:38}}>N°</th>
+                  <th style={{...thStyle,textAlign:'left'}}>Fecha</th>
+                  <th style={{...thStyle,textAlign:'right'}}>Capital</th>
+                  <th style={{...thStyle,textAlign:'right'}}>Interés</th>
+                  {hasDeg&&<th style={{...thStyle,textAlign:'right'}}>Desgrav.</th>}
+                  {hasGO&&<th style={{...thStyle,textAlign:'right'}}>G.Oper.</th>}
+                  <th style={{...thStyle,textAlign:'right'}}>Cuota</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r,i)=>(
                   <tr key={r.id} style={{borderBottom:'1px solid #e0e0e0'}}>
                     <td style={{padding:'9px 10px',textAlign:'center',color:'#666',fontSize:12}}>{r.n_cuota}</td>
-                    <td style={{padding:'9px 12px',color:'#333'}}>{fmtD(r.fecha_vence)}</td>
+                    <td style={{padding:'9px 12px',color:'#333',whiteSpace:'nowrap'}}>{fmtD(r.fecha_vence)}</td>
                     <td style={{padding:'9px 12px',textAlign:'right',color:'#555'}}>{fmt(r.capital_cuota)}</td>
                     <td style={{padding:'9px 12px',textAlign:'right',color:'#555'}}>{fmt(r.interes_cuota)}</td>
                     {hasDeg&&<td style={{padding:'9px 12px',textAlign:'right',color:'#555'}}>{fmt(r.desgravamen)}</td>}
@@ -1633,8 +1633,8 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
                 </tr>
               </tfoot>
             </table>
-
           </div>
+
         </div>
       </div>
     </div>
