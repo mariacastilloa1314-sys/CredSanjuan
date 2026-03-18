@@ -1514,32 +1514,48 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
   const T='#2d8a7a'; const D='#1B4F45'; const MINT='#d4ede5';
   const NF="'DM Sans',sans-serif";
 
-  async function descargarImagen(){
+  async function captureEl(){
     const el=modalRef.current;
-    if(!el||!window.html2canvas){alert('html2canvas no disponible');return;}
-    const btn=document.getElementById('pm-btns');
-    if(btn)btn.style.display='none';
-    const canvas=await window.html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff',scrollY:0,scrollX:0,width:el.scrollWidth,height:el.scrollHeight,windowWidth:el.scrollWidth,windowHeight:el.scrollHeight});
-    if(btn)btn.style.display='';
-    const a=document.createElement('a');
-    a.download='cronograma_'+loan.cliente.replace(/\s+/g,'_')+'.png';
-    a.href=canvas.toDataURL('image/png');
-    a.click();
+    if(!el||!window.html2canvas)throw new Error('html2canvas no disponible');
+    // Clone off-screen to capture full content without scroll clipping
+    const clone=el.cloneNode(true);
+    clone.style.cssText='position:fixed;top:0;left:0;z-index:-9999;width:'+el.offsetWidth+'px;overflow:visible;background:#fff;pointer-events:none;';
+    document.body.appendChild(clone);
+    const canvas=await window.html2canvas(clone,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false});
+    document.body.removeChild(clone);
+    return canvas;
   }
 
   async function copiarImagen(){
-    const el=modalRef.current;
-    if(!el||!window.html2canvas){alert('html2canvas no disponible');return;}
     const btn=document.getElementById('pm-btns');
-    if(btn)btn.style.display='none';
-    const canvas=await window.html2canvas(el,{scale:2,useCORS:true,backgroundColor:'#ffffff',scrollY:0,scrollX:0,width:el.scrollWidth,height:el.scrollHeight,windowWidth:el.scrollWidth,windowHeight:el.scrollHeight});
-    if(btn)btn.style.display='';
     try{
+      if(btn)btn.style.display='none';
+      const canvas=await captureEl();
+      if(btn)btn.style.display='';
       canvas.toBlob(async(blob)=>{
         await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
         alert('✓ Imagen copiada al portapapeles');
       },'image/png');
-    }catch(ex){alert('No se pudo copiar. Usa "Descargar imagen".');}
+    }catch(ex){
+      if(btn)btn.style.display='';
+      alert('No se pudo copiar: '+ex.message);
+    }
+  }
+
+  async function descargarImagen(){
+    const btn=document.getElementById('pm-btns');
+    try{
+      if(btn)btn.style.display='none';
+      const canvas=await captureEl();
+      if(btn)btn.style.display='';
+      const a=document.createElement('a');
+      a.download='cronograma_'+loan.cliente.replace(/\s+/g,'_')+'.png';
+      a.href=canvas.toDataURL('image/png');
+      a.click();
+    }catch(ex){
+      if(btn)btn.style.display='';
+      alert('Error: '+ex.message);
+    }
   }
 
   function imprimir(){
