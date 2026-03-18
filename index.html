@@ -1517,11 +1517,37 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
   async function captureEl(){
     const el=modalRef.current;
     if(!el||!window.html2canvas)throw new Error('html2canvas no disponible');
-    // Clone off-screen to capture full content without scroll clipping
+    // Get real full dimensions including overflow
+    const fullW=Math.max(el.scrollWidth, el.offsetWidth, 600);
+    const fullH=el.scrollHeight;
+    // Clone off-screen at full width so nothing gets clipped
     const clone=el.cloneNode(true);
-    clone.style.cssText='position:fixed;top:0;left:0;z-index:-9999;width:'+el.offsetWidth+'px;overflow:visible;background:#fff;pointer-events:none;';
+    clone.style.cssText=[
+      'position:fixed',
+      'top:-99999px',
+      'left:0',
+      'z-index:-1',
+      'width:'+fullW+'px',
+      'overflow:visible',
+      'background:#fff',
+      'pointer-events:none',
+      // Make all inner tables/divs not clip
+      'white-space:nowrap',
+    ].join(';');
+    // Also make the inner scroll wrapper visible
+    const scrollDiv=clone.querySelector('[style*="overflow"]');
+    if(scrollDiv)scrollDiv.style.overflow='visible';
     document.body.appendChild(clone);
-    const canvas=await window.html2canvas(clone,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false});
+    const canvas=await window.html2canvas(clone,{
+      scale:2,
+      useCORS:true,
+      backgroundColor:'#ffffff',
+      logging:false,
+      width:fullW,
+      height:clone.scrollHeight,
+      windowWidth:fullW,
+      windowHeight:clone.scrollHeight,
+    });
     document.body.removeChild(clone);
     return canvas;
   }
