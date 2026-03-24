@@ -1119,7 +1119,7 @@ function NuevoPrestamo({onCreate}){
   const[f,setF]=useState({
     cliente:'',garante:'',referencia:'',clienteExterno:'NO',
     monto:'',tasaPct:'6',tipo:'MENSUAL',cuotas:'',
-    desgravamen:'0',gastoOperativo:'0',
+    desgravamen:'5',gastoOperativo:'0',
     fechaPrestamo:todayStr(),
   });
   const[showPrev,setShowPrev]=useState(false);
@@ -1235,8 +1235,16 @@ function NuevoPrestamo({onCreate}){
             </div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}} className="form-cols">
               <div>
-                <span className="lbl">Desgravamen / cuota (S/.)</span>
-                <input className="inp" type="number" value={f.desgravamen} onChange={e=>s('desgravamen',e.target.value)} placeholder="0"/>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+                  <span className="lbl" style={{marginBottom:0}}>Desgravamen / cuota</span>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:12,cursor:'pointer'}}>
+                    <input type="checkbox" checked={f.desgravamen!=='0'&&Number(f.desgravamen)>0}
+                      onChange={e=>s('desgravamen',e.target.checked?'5':'0')}
+                      style={{width:14,height:14,accentColor:'var(--teal)',cursor:'pointer'}}/>
+                    Cobrar
+                  </label>
+                </div>
+                {Number(f.desgravamen)>0&&<input className="inp" type="number" value={f.desgravamen} onChange={e=>s('desgravamen',e.target.value)} placeholder="5"/>}
                 <div style={{fontSize:11,color:'var(--grey)',marginTop:3}}>Seguro de vida por cuota</div>
               </div>
               <div>
@@ -1312,6 +1320,7 @@ function EditarModal({loan, onClose, onSave}){
   const[recalc,setRecalc]=useState(true);
   const[saving,setSaving]=useState(false);
   const[err,setErr]=useState('');
+  const[aplicarMora,setAplicarMora]=useState(false);
   const s=(k,v)=>setF(p=>({...p,[k]:v}));
   const fechaCambiada=f.fechaPrestamo!==loan.fecha_prestamo;
 
@@ -1628,6 +1637,7 @@ function CronogramaModal({loan,rows,onClose,isBorrador=false}){
                 ['Tipo', loan.tipo||'—'],
                 ...(hasDeg?[['Desgravamen', fmt(rows[0]?.desgravamen||0)+' / cuota']]:[]),
                 ['Fecha inicio', fmtD(loan.fecha_prestamo)],
+                ...(loan.referencia?[['Referenciado por', loan.referencia]]:[]),
               ].map(([k,v])=>(
                 <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid #f0f0f0',fontSize:12.5,gap:8}}>
                   <span style={{color:'#888'}}>{k}</span>
@@ -1816,6 +1826,7 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
   const[fecha,setFecha]=useState(todayStr());
   const[saving,setSaving]=useState(false);
   const[err,setErr]=useState('');
+  const[aplicarMora,setAplicarMora]=useState(false);
 
   // Search by ID or client name
   const filtered=React.useMemo(()=>{
@@ -1922,8 +1933,38 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
               <input className="inp" type="number" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="0.00"/>
             </div>
             <div>
-              <span className="lbl">Mora (S/.)</span>
-              <input className="inp" type="number" value={mora} onChange={e=>setMora(e.target.value)} placeholder="0.00"/>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+                <span className="lbl" style={{marginBottom:0}}>Mora</span>
+                <label style={{display:'flex',alignItems:'center',gap:5,fontSize:12,cursor:'pointer'}}>
+                  <input type="checkbox" checked={aplicarMora}
+                    onChange={e=>{
+                      setAplicarMora(e.target.checked);
+                      if(e.target.checked&&selRow){
+                        const fv=new Date(selRow.fecha_vence+'T00:00:00');
+                        const hoy=new Date();hoy.setHours(0,0,0,0);
+                        const dias=Math.max(0,Math.floor((hoy-fv)/(1000*60*60*24)));
+                        const loan2=loans.find(l=>Number(l.id)===Number(selRow.prestamo_id));
+                        const intMensual=loan2?N(loan2.monto)*N(loan2.tasa):N(selRow.interes_cuota);
+                        setMora((intMensual/30*dias).toFixed(2));
+                      }else{setMora('');}
+                    }}
+                    style={{width:14,height:14,accentColor:'var(--teal)',cursor:'pointer'}}/>
+                  Aplicar mora
+                </label>
+              </div>
+              {aplicarMora&&(
+                <div>
+                  <input className="inp" type="number" value={mora} onChange={e=>setMora(e.target.value)} placeholder="0.00"/>
+                  {selRow&&(()=>{
+                    const fv=new Date(selRow.fecha_vence+'T00:00:00');
+                    const hoy=new Date();hoy.setHours(0,0,0,0);
+                    const dias=Math.max(0,Math.floor((hoy-fv)/(1000*60*60*24)));
+                    const loan2=loans.find(l=>Number(l.id)===Number(selRow.prestamo_id));
+                    const intMensual=loan2?N(loan2.monto)*N(loan2.tasa):N(selRow.interes_cuota);
+                    return dias>0?(<div style={{fontSize:11,color:'var(--grey)',marginTop:3}}>{dias} día{dias!==1?'s':''} × S/ {(intMensual/30).toFixed(2)}/día = <strong>S/ {(intMensual/30*dias).toFixed(2)}</strong></div>):null;
+                  })()}
+                </div>
+              )}
             </div>
             <div>
               <span className="lbl">Tipo de pago</span>
