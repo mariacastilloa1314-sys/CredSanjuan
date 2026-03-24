@@ -710,7 +710,7 @@ function App(){
         const isAlert=n.id==='dashboard';
         const alertTotal=isAlert?sched.filter(r=>{
           const est=getEst(r);
-          if(['Pagado','Adelantado'].includes(est))return false;
+          if(['Pagado','Adelantado','Solo int.','Parcial'].includes(est))return false;
           const today=new Date();today.setHours(0,0,0,0);
           const fv=new Date(r.fecha_vence+'T00:00:00');
           const diff=Math.floor((fv-today)/(1000*60*60*24));
@@ -851,7 +851,7 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
   // ── Alertas de cobro ──
   const _today=new Date();_today.setHours(0,0,0,0);
   const _getDiff=fv=>{const d=new Date(fv+'T00:00:00');return Math.floor((d-_today)/(1000*60*60*24));};
-  const _pending=sched.filter(r=>!['Pagado','Adelantado'].includes(getEst(r)));
+  const _pending=sched.filter(r=>!['Pagado','Adelantado','Solo int.','Parcial'].includes(getEst(r)));
   const alertHoy=_pending.filter(r=>_getDiff(r.fecha_vence)===0);
   const alertProx=_pending.filter(r=>{const d=_getDiff(r.fecha_vence);return d>0&&d<=3;});
   const alertVenc=_pending.filter(r=>_getDiff(r.fecha_vence)<0);
