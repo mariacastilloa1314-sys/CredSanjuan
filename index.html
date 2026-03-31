@@ -246,7 +246,7 @@ const {useState,useEffect,useRef}=React;
 
 // ── Utilidades ────────────────────────────────────────────────────
 const N=v=>Number(v)||0;
-const fmt=n=>`S/ ${N(n).toFixed(2)}`;
+const fmt=n=>`S/ ${Math.ceil(N(n)).toLocaleString('es-PE')}`;
 // Formatea fecha "2026-03-01" → "01/03/2026"
 const fmtD=d=>{
   if(!d)return'—';
@@ -318,9 +318,9 @@ function getEstPrestamo(cuotas){
 function genCrono(loan,pid){
   const m=N(loan.monto),t=N(loan.tasa),c=N(loan.cuotas);
   const d=N(loan.desgravamen||0),go=N(loan.gasto_operativo||0);
-  const cap=parseFloat((m/c).toFixed(2));
-  const int=parseFloat(calcInt(m,t,loan.tipo,c).toFixed(2));
-  const base=parseFloat((cap+int+d+go).toFixed(2));
+  const cap=Math.ceil(m/c);
+  const int=Math.ceil(calcInt(m,t,loan.tipo,c));
+  const base=cap+int+Math.ceil(d)+Math.ceil(go);
   return Array.from({length:c},(_,i)=>({
     prestamo_id:pid,cliente:loan.cliente,n_cuota:i+1,
     fecha_vence:getFV(loan.fecha_prestamo,i+1,loan.tipo),
@@ -1321,6 +1321,17 @@ function EditarModal({loan, onClose, onSave}){
   const[saving,setSaving]=useState(false);
   const[err,setErr]=useState('');
   const[aplicarMora,setAplicarMora]=useState(false);
+
+  // Auto-fill mora whenever toggle is on and selRow changes
+  React.useEffect(()=>{
+    if(!aplicarMora||!selRow){if(!aplicarMora)setMora('');return;}
+    const fv=new Date(selRow.fecha_vence+'T00:00:00');
+    const hoy=new Date();hoy.setHours(0,0,0,0);
+    const dias=Math.max(0,Math.floor((hoy-fv)/(1000*60*60*24)));
+    const loan2=loans.find(l=>Number(l.id)===Number(selRow.prestamo_id));
+    const intMensual=loan2?N(loan2.monto)*N(loan2.tasa):N(selRow.interes_cuota);
+    setMora(Math.ceil(intMensual/30*dias).toString());
+  },[aplicarMora,selRow]);
   const s=(k,v)=>setF(p=>({...p,[k]:v}));
   const fechaCambiada=f.fechaPrestamo!==loan.fecha_prestamo;
 
@@ -1828,6 +1839,17 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
   const[err,setErr]=useState('');
   const[aplicarMora,setAplicarMora]=useState(false);
 
+  // Auto-fill mora whenever toggle is on and selRow changes
+  React.useEffect(()=>{
+    if(!aplicarMora||!selRow){if(!aplicarMora)setMora('');return;}
+    const fv=new Date(selRow.fecha_vence+'T00:00:00');
+    const hoy=new Date();hoy.setHours(0,0,0,0);
+    const dias=Math.max(0,Math.floor((hoy-fv)/(1000*60*60*24)));
+    const loan2=loans.find(l=>Number(l.id)===Number(selRow.prestamo_id));
+    const intMensual=loan2?N(loan2.monto)*N(loan2.tasa):N(selRow.interes_cuota);
+    setMora(Math.ceil(intMensual/30*dias).toString());
+  },[aplicarMora,selRow]);
+
   // Search by ID or client name
   const filtered=React.useMemo(()=>{
     const q=search.trim().toLowerCase();
@@ -1940,12 +1962,24 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
                     onChange={e=>{
                       setAplicarMora(e.target.checked);
                       if(e.target.checked&&selRow){
-                        const fv=new Date(selRow.fecha_vence+'T00:00:00');
                         const hoy=new Date();hoy.setHours(0,0,0,0);
-                        const dias=Math.max(0,Math.floor((hoy-fv)/(1000*60*60*24)));
                         const loan2=loans.find(l=>Number(l.id)===Number(selRow.prestamo_id));
                         const intMensual=loan2?N(loan2.monto)*N(loan2.tasa):N(selRow.interes_cuota);
-                        setMora((intMensual/30*dias).toFixed(2));
+                        const moraDiaria=intMensual/30;
+                        // Si es cancelación total: suma mora de TODAS las cuotas vencidas del préstamo
+                        if(tipo==='CANCELAR PRÉSTAMO'&&loan2){
+                          const vencidas=loanRows.filter(r=>!['Pagado','Adelantado','Solo int.','Parcial'].includes(getEst(r))&&new Date(r.fecha_vence+'T00:00:00')<hoy);
+                          const totalMora=vencidas.reduce((acc,r)=>{
+                            const dias=Math.max(0,Math.floor((hoy-new Date(r.fecha_vence+'T00:00:00'))/(1000*60*60*24)));
+                            return acc+Math.ceil(moraDiaria*dias);
+                          },0);
+                          setMora(totalMora>0?String(totalMora):'0');
+                        } else {
+                          const fv=new Date(selRow.fecha_vence+'T00:00:00');
+                          const dias=Math.max(0,Math.floor((hoy-fv)/(1000*60*60*24)));
+                          const moraCalc=Math.ceil(moraDiaria*dias);
+                          setMora(moraCalc>0?String(moraCalc):'0');
+                        }
                       }else{setMora('');}
                     }}
                     style={{width:14,height:14,accentColor:'var(--teal)',cursor:'pointer'}}/>
@@ -1961,7 +1995,7 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
                     const dias=Math.max(0,Math.floor((hoy-fv)/(1000*60*60*24)));
                     const loan2=loans.find(l=>Number(l.id)===Number(selRow.prestamo_id));
                     const intMensual=loan2?N(loan2.monto)*N(loan2.tasa):N(selRow.interes_cuota);
-                    return dias>0?(<div style={{fontSize:11,color:'var(--grey)',marginTop:3}}>{dias} día{dias!==1?'s':''} × S/ {(intMensual/30).toFixed(2)}/día = <strong>S/ {(intMensual/30*dias).toFixed(2)}</strong></div>):null;
+                    return dias>0?(<div style={{fontSize:11,color:'var(--grey)',marginTop:3}}>{dias} día{dias!==1?'s':''} × S/ {Math.ceil(intMensual/30)}/día = <strong>S/ {Math.ceil(intMensual/30*dias)}</strong></div>):(<div style={{fontSize:11,color:'var(--grey)',marginTop:3}}>Cuota no vencida — ingresa mora manualmente si aplica</div>);
                   })()}
                 </div>
               )}
