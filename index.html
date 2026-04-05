@@ -1438,45 +1438,79 @@ function EditarModal({loan, onClose, onSave}){
 function Prestamos({loans,sched,onDelete,onVer,onPagar,onEditar}){
   const[q,setQ]=useState('');
   const[editLoan,setEditLoan]=useState(null);
+  const[filtro,setFiltro]=useState('activos');
   if(!Array.isArray(loans)||!Array.isArray(sched))return<div style={{padding:30,textAlign:'center',color:'var(--grey)'}}>Cargando...</div>;
-  const fl=loans.filter(l=>l.cliente.toLowerCase().includes(q.toLowerCase())||String(l.id).includes(q));
+
+  const getEst2=l=>getEstPrestamo(sched.filter(r=>r.prestamo_id===l.id));
+
+  // Split and sort: active first, cancelled last
+  const activos=loans.filter(l=>getEst2(l)!=='CANCELADO');
+  const cancelados=loans.filter(l=>getEst2(l)==='CANCELADO');
+  const listBase=filtro==='activos'?activos:filtro==='cancelados'?cancelados:[...activos,...cancelados];
+  const fl=listBase.filter(l=>l.cliente.toLowerCase().includes(q.toLowerCase())||String(l.id).includes(q));
+
   const cob=id=>sched.filter(r=>r.prestamo_id===id&&r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
   const sig=id=>sched.filter(r=>r.prestamo_id===id&&!['Pagado','Adelantado'].includes(getEst(r))).sort((a,b)=>a.n_cuota-b.n_cuota)[0];
+
+  const tabStyle=(t)=>({
+    padding:'7px 18px',fontSize:12.5,fontWeight:600,borderRadius:6,cursor:'pointer',border:'none',
+    background:filtro===t?'var(--teal)':'var(--light)',
+    color:filtro===t?'#fff':'var(--grey)',
+    transition:'all .2s',
+  });
+
   return(
     <div style={{animation:'fadeIn .3s ease'}}>
-      {editLoan&&<EditarModal loan={editLoan} onClose={()=>setEditLoan(null)} onSave={async(l,d,rc)=>{await onEditar(l,d,rc);setEditLoan(null);}}/>}
+      {editLoan&&<EditarModal loan={editLoan} onClose={()=>setEditLoan(null)} onSave={async(data)=>{await onEditar(editLoan.id,data);setEditLoan(null);}}/>}
       <div><div className="pg-ey">Portafolio</div><div className="pg-ti">Préstamos</div></div>
+
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:13,flexWrap:'wrap'}}>
-        <span style={{fontSize:13,color:'var(--grey)'}}>{fl.length} préstamo{fl.length!==1?'s':''}</span>
-        <input className="inp" placeholder="Buscar cliente o ID..." value={q} onChange={e=>setQ(e.target.value)} style={{width:220}}/>
+        {/* FILTRO TABS */}
+        <div style={{display:'flex',gap:6}}>
+          <button style={tabStyle('activos')} onClick={()=>setFiltro('activos')}>
+            Activos <span style={{fontSize:11,opacity:.75}}>({activos.length})</span>
+          </button>
+          <button style={tabStyle('todos')} onClick={()=>setFiltro('todos')}>
+            Todos <span style={{fontSize:11,opacity:.75}}>({loans.length})</span>
+          </button>
+          <button style={tabStyle('cancelados')} onClick={()=>setFiltro('cancelados')}>
+            Cancelados <span style={{fontSize:11,opacity:.75}}>({cancelados.length})</span>
+          </button>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+          <span style={{fontSize:13,color:'var(--grey)'}}>{fl.length} préstamo{fl.length!==1?'s':''}</span>
+          <input className="inp" placeholder="Buscar cliente o ID..." value={q} onChange={e=>setQ(e.target.value)} style={{width:200}}/>
+        </div>
       </div>
+
       <div className="card"><div className="tbl-wrap"><table>
         <thead><tr><th>ID</th><th>Cliente / Garante</th><th>Monto</th><th>Tipo / Tasa</th><th>Cuotas</th><th>Progreso</th><th>Cobrado / Saldo</th><th>Inicio</th><th>Estado</th><th>Acciones</th></tr></thead>
         <tbody>
           {fl.length===0&&<tr><td colSpan={10} style={{textAlign:'center',padding:44,color:'var(--grey)'}}>No se encontraron préstamos</td></tr>}
           {fl.map(l=>{
             const cuotas=sched.filter(r=>r.prestamo_id===l.id);
-            const est=getEstPrestamo(cuotas);
+            const est=getEst2(l);
+            const cancelado=est==='CANCELADO';
             const s2=sig(l.id);
             const pagadas=cuotas.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).length;
             const saldo=cuotas.reduce((a,r)=>a+getSaldo(r),0);
             const cobrado=cob(l.id);
             const pct=l.cuotas>0?Math.round(pagadas/l.cuotas*100):0;
             return(
-              <tr key={l.id}>
+              <tr key={l.id} style={{opacity:cancelado?.55:1,background:cancelado?'#f9f9f9':undefined}}>
                 <td style={{color:'var(--grey)',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>#{l.id}</td>
                 <td style={{minWidth:130}}>
-                  <div style={{fontWeight:700,color:'var(--ink)',fontSize:13}}>{l.cliente}</div>
+                  <div style={{fontWeight:700,color:cancelado?'#888':'var(--ink)',fontSize:13}}>{l.cliente}</div>
                   {l.garante&&<div style={{fontSize:11,color:'var(--grey)',marginTop:1}}>Gar: {l.garante}</div>}
                   {l.referencia&&<div style={{fontSize:10.5,color:'var(--teal)',marginTop:1}}>Ref: {l.referencia}</div>}
                 </td>
-                <td style={{fontWeight:700,color:'var(--dark)',whiteSpace:'nowrap'}}>{fmt(l.monto)}</td>
+                <td style={{fontWeight:700,color:cancelado?'#888':'var(--dark)',whiteSpace:'nowrap'}}>{fmt(l.monto)}</td>
                 <td>
                   <span style={{fontSize:10,background:'var(--light)',color:'var(--dark)',borderRadius:4,padding:'2px 7px',fontWeight:700,display:'block',marginBottom:3}}>{l.tipo}</span>
                   <span style={{fontSize:11,color:'var(--grey)',fontWeight:600}}>{(N(l.tasa)*100).toFixed(1)}%</span>
                 </td>
                 <td style={{textAlign:'center'}}>
-                  <div style={{fontWeight:700,fontSize:13,color:'var(--dark)'}}>{pagadas}<span style={{color:'var(--grey)',fontWeight:400}}>/{l.cuotas}</span></div>
+                  <div style={{fontWeight:700,fontSize:13,color:'var(--dark)'}}>{pagadas}<span style={{color:'var(--grey)',fontWeight:400}}>/{cuotas.length}</span></div>
                   <div style={{fontSize:9.5,color:'var(--grey)',letterSpacing:'.05em'}}>pagadas</div>
                 </td>
                 <td style={{minWidth:90}}>
@@ -1496,8 +1530,8 @@ function Prestamos({loans,sched,onDelete,onVer,onPagar,onEditar}){
                 <td>
                   <div style={{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
                     <button className="btn-ol btn-sm" onClick={()=>onVer(l)}>Ver</button>
-                    {s2&&<button className="btn btn-sm" onClick={()=>onPagar(s2)}>Pagar</button>}
-                    <button className="btn-ol btn-sm" style={{color:'#555',borderColor:'#ccc'}} onClick={()=>setEditLoan(l)}>✏</button>
+                    {!cancelado&&s2&&<button className="btn btn-sm" onClick={()=>onPagar(s2)}>Pagar</button>}
+                    {!cancelado&&<button className="btn-ol btn-sm" onClick={()=>setEditLoan(l)} style={{fontSize:11}}>✏</button>}
                     <button className="btn-del" onClick={()=>onDelete(l.id)}>×</button>
                   </div>
                 </td>
@@ -1510,7 +1544,7 @@ function Prestamos({loans,sched,onDelete,onVer,onPagar,onEditar}){
   );
 }
 
-/* ══ CRONOGRAMA IMPRIMIBLE (modal) ══════════════════════════════ */
+
 function CronogramaModal({loan,rows,onClose,isBorrador=false}){
   const modalRef=React.useRef(null);
   const totBase=rows.reduce((a,r)=>a+N(r.cuota_base),0);
@@ -1852,6 +1886,52 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
 
   function selectLoan(l){setSelId(String(l.id));setSearch(l.cliente+' (ID:'+l.id+')');setSelRow(null);setErr('');}
 
+  async function agregarCuotaExtra(){
+    if(!loan){setErr('Selecciona un préstamo primero');return;}
+    // Get last cuota to base the new one on
+    const sorted=loanRows.sort((a,b)=>a.n_cuota-b.n_cuota);
+    const ultima=sorted[sorted.length-1];
+    if(!ultima){setErr('No hay cuotas en este préstamo');return;}
+    // Calculate next date based on loan type
+    const lastDate=ultima.fecha_vence;
+    let nextDate=lastDate;
+    if(loan.tipo==='MENSUAL'){
+      const d=new Date(lastDate+'T00:00:00');
+      d.setMonth(d.getMonth()+1);
+      nextDate=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    } else if(loan.tipo==='SEMANAL'){
+      const d=new Date(lastDate+'T00:00:00');
+      d.setDate(d.getDate()+7);
+      nextDate=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    } else {
+      const d=new Date(lastDate+'T00:00:00');
+      d.setDate(d.getDate()+1);
+      nextDate=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    }
+    const nuevaCuota={
+      prestamo_id:loan.id,
+      cliente:loan.cliente,
+      n_cuota:ultima.n_cuota+1,
+      fecha_vence:nextDate,
+      capital_cuota:ultima.capital_cuota,
+      interes_cuota:ultima.interes_cuota,
+      desgravamen:ultima.desgravamen,
+      gasto_operativo:ultima.gasto_operativo||0,
+      cuota_base:ultima.cuota_base,
+      tipo_pago:'NORMAL',
+      monto_pagado:null,mora:null,fecha_pago:null,
+    };
+    try{
+      const H={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=representation'};
+      const r=await fetch(SURL+'/rest/v1/cronograma',{method:'POST',headers:H,body:JSON.stringify(nuevaCuota)});
+      if(!r.ok){const t=await r.text();setErr('Error: '+t);return;}
+      setErr('');
+      alert('✓ Cuota extra #'+(ultima.n_cuota+1)+' agregada para '+nextDate.split('-').reverse().join('/'));
+      // Reload
+      window.location.reload();
+    }catch(ex){setErr('Error: '+ex.message);}
+  }
+
   async function pagar(){
     if(!selRow){setErr('Selecciona una cuota');return;}
     if(!monto||isNaN(Number(monto))){setErr('Ingresa el monto a pagar');return;}
@@ -1915,7 +1995,12 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
       {loan&&pendientes.length===0&&<div className="card" style={{padding:18,color:'var(--green)',fontWeight:600}}>✓ Todas las cuotas de {loan.cliente} están al día</div>}
       {loan&&pendientes.length>0&&(
         <div className="card" style={{marginBottom:13}}>
-          <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Cuotas pendientes — {loan.cliente}</div></div>
+          <div className="c-hd" style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}><div className="c-dot"/><div className="c-hd-t">Cuotas pendientes — {loan.cliente}</div></div>
+              <button className="btn-ol btn-sm" style={{fontSize:11,marginRight:8}} onClick={agregarCuotaExtra}>
+                + Cuota extra (solo interés)
+              </button>
+            </div>
           <div className="tbl-wrap"><table>
             <thead><tr><th>#</th><th>Fecha</th><th>Cuota base</th><th>Mora</th><th>Total</th><th>Estado</th><th></th></tr></thead>
             <tbody>{pendientes.map((r,idx)=>{
