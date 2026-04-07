@@ -291,6 +291,7 @@ function getEst(r){
   const tp=(r.tipo_pago||'').toUpperCase().trim();
   if(tp==='SOLO INTERES')return'Solo int.';
   if(tp==='PAGO ADELANTADO')return'Adelantado';
+  if(tp==='CANCELAR PRESTAMO'||tp==='CANCELAR PR\u00c9STAMO')return'Pagado';
   const pagado=N(r.monto_pagado);
   if(!pagado){
     const fv=new Date(r.fecha_vence+'T12:00:00'),hoy=new Date();
@@ -302,6 +303,7 @@ function getEst(r){
 function getSaldo(r){
   const tp=(r.tipo_pago||'').toUpperCase().trim();
   if(tp==='SOLO INTERES')return N(r.capital_cuota);
+  if(tp==='CANCELAR PRESTAMO'||tp==='CANCELAR PR\u00c9STAMO')return 0;
   const pagado=N(r.monto_pagado);
   if(!pagado)return N(r.cuota_base);
   return Math.max(0,N(r.cuota_base)-pagado);
@@ -617,12 +619,16 @@ function App(){
 
     if(pago.tipoPago==='CANCELAR PRÉSTAMO'){
       // Mark ALL pending cuotas of this loan as cancelled
-      const pendientes=sched.filter(r=>r.prestamo_id===row.prestamo_id&&getSaldo(r)>0);
-      // Pay the selected cuota with the entered amount + mora
+      // Only process cuotas that haven't been paid yet — leave Solo int. and Pagado alone
+      const pendientes=sched.filter(r=>
+        r.prestamo_id===row.prestamo_id&&
+        !['Pagado','Adelantado','Solo int.','Parcial'].includes(getEst(r))
+      );
+      // Pay selected cuota with entered amount; companion unpaid cuotas get monto_pagado=0
       const updates=pendientes.map((r,i)=>({
         id:r.id,
         tipo_pago:'CANCELAR PRÉSTAMO',
-        monto_pagado:r.id===rowId?N(pago.montoPagado):N(r.cuota_base),
+        monto_pagado:r.id===rowId?N(pago.montoPagado):0,
         mora:r.id===rowId&&pago.mora?N(pago.mora):null,
         fecha_pago:pago.fechaPago,
       }));
@@ -637,9 +643,13 @@ function App(){
       showToast('✓ Préstamo cancelado — '+updates.length+' cuotas cerradas');
     } else {
       // Normal single-cuota payment
-      const _pr=await fetch(SURL+'/rest/v1/cronograma?id=eq.'+rowId,{method:'PATCH',headers:{'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({tipo_pago:pago.tipoPago,monto_pagado:N(pago.montoPagado),mora:pago.mora?N(pago.mora):null,fecha_pago:pago.fechaPago})});
+      // For SOLO INTERES: set cuota_base = just interest so capital stays as pending debt
+      const isSoloInt=pago.tipoPago==='SOLO INTERES';
+      const patchData={tipo_pago:pago.tipoPago,monto_pagado:N(pago.montoPagado),mora:pago.mora?N(pago.mora):null,fecha_pago:pago.fechaPago};
+      if(isSoloInt){patchData.capital_cuota=0;}
+      const _pr=await fetch(SURL+'/rest/v1/cronograma?id=eq.'+rowId,{method:'PATCH',headers:{'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(patchData)});
       if(!_pr.ok){const t=await _pr.text();showToast('Error: '+t,'err');return;}
-      setSched(p=>p.map(r=>r.id===rowId?{...r,tipo_pago:pago.tipoPago,monto_pagado:N(pago.montoPagado),mora:pago.mora?N(pago.mora):null,fecha_pago:pago.fechaPago}:r));
+      setSched(p=>p.map(r=>r.id===rowId?{...r,...patchData,capital_cuota:isSoloInt?0:r.capital_cuota}:r));
       showToast('✓ Pago registrado');
     }
     setPayingRow(null);
@@ -792,7 +802,8 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
   const totPres=loans.reduce((a,l)=>a+N(l.monto),0);
   const totCob=sched.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
   const montoVenc=venc.reduce((a,r)=>a+getSaldo(r),0);
-  const porCobrar=sched.filter(r=>!['Pagado','Adelantado'].includes(getEst(r))).reduce((a,r)=>a+getSaldo(r),0);
+  const canceladosIds=new Set(loans.filter(l=>getEstPrestamo(sched.filter(r=>r.prestamo_id===l.id))==='CANCELADO').map(l=>l.id));
+  const porCobrar=sched.filter(r=>!['Pagado','Adelantado'].includes(getEst(r))&&!canceladosIds.has(r.prestamo_id)&&!canceladosIds.has(Number(r.prestamo_id))).reduce((a,r)=>a+getSaldo(r),0);
   const nPag=sched.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).length;
   const nPend=sched.filter(r=>getEst(r)==='Pendiente').length;
   const nVenc=venc.length;
@@ -1084,7 +1095,7 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
             {[
               {l:'Capital prestado',    c:D,           v:totPres},
               {l:'Capital recuperado',  c:T,           v:totCapRecuperado},
-              {l:'Capital en calle',    c:'#a0620a',   v:Math.max(0,totPres-totCapRecuperado)},
+              {l:'Capital en calle',    c:'#a0620a',   v:Math.max(0,loans.filter(l=>getEstPrestamo(sched.filter(r=>r.prestamo_id===l.id))!=='CANCELADO').reduce((a,l)=>a+N(l.monto),0)-totCapRecuperado)},
               {l:'Interés cobrado',     c:T2,          v:totInt},
               {l:'Mora cobrada',        c:'#b52a2a',   v:totMora},
             ].map((row,i)=>{
@@ -1493,7 +1504,7 @@ function Prestamos({loans,sched,onDelete,onVer,onPagar,onEditar}){
             const cancelado=est==='CANCELADO';
             const s2=sig(l.id);
             const pagadas=cuotas.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).length;
-            const saldo=cuotas.reduce((a,r)=>a+getSaldo(r),0);
+            const saldo=est==='CANCELADO'?0:cuotas.reduce((a,r)=>a+getSaldo(r),0);
             const cobrado=cob(l.id);
             const pct=l.cuotas>0?Math.round(pagadas/l.cuotas*100):0;
             return(
@@ -1812,7 +1823,7 @@ function Cronograma({loans,sched,viewLoan,onPagar}){
           </div>
           <div style={{display:'flex',gap:10,padding:'12px 16px',background:'var(--alt)',borderBottom:'1px solid var(--border)',flexWrap:'wrap'}}>
             {[
-              {l:'Saldo pendiente',v:totSaldo,c:totSaldo>0?'var(--red)':'var(--green)',bc:totSaldo>0?'#f5a5a5':'#a5d4b8',bg:totSaldo>0?'#fde8e8':'#dff2e8'},
+              {l:'Saldo pendiente',v:getEstPrestamo(rows)!=='CANCELADO'?totSaldo:0,c:(getEstPrestamo(rows)!=='CANCELADO'&&totSaldo>0)?'var(--red)':'var(--green)',bc:(getEstPrestamo(rows)!=='CANCELADO'&&totSaldo>0)?'#f5a5a5':'#a5d4b8',bg:(getEstPrestamo(rows)!=='CANCELADO'&&totSaldo>0)?'#fde8e8':'#dff2e8'},
               {l:'Total cobrado',v:totPag,c:'var(--green)',bc:'#a5d4b8',bg:'#dff2e8'},
               {l:'Cuotas restantes',v:rows.filter(r=>!['Pagado','Adelantado'].includes(getEst(r))).length,c:'var(--dark)',bc:'var(--border)',bg:'var(--light)',noFmt:true},
             ].map(i=>(<div key={i.l} className="c-pill" style={{background:i.bg,borderColor:i.bc}}><div className="c-pill-lbl" style={{color:i.c}}>{i.l}</div><div className="c-pill-val" style={{color:i.c}}>{i.noFmt?i.v:fmt(i.v)}</div></div>))}
@@ -1883,6 +1894,9 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
   const loan=loans.find(l=>l.id===Number(selId)||l.id===selId);
   const loanRows=loan?sched.filter(r=>r.prestamo_id===loan.id).sort((a,b)=>a.n_cuota-b.n_cuota):[];
   const pendientes=loanRows.filter(r=>!['Pagado','Adelantado'].includes(getEst(r)));
+  // For ordering: Solo int. counts as paid so next cuota is unlocked
+  const efectivamentePagadas=loanRows.filter(r=>['Pagado','Adelantado','Solo int.'].includes(getEst(r))).length;
+  const primeraDisponible=pendientes.filter(r=>!['Solo int.'].includes(getEst(r)))[0];
 
   function selectLoan(l){setSelId(String(l.id));setSearch(l.cliente+' (ID:'+l.id+')');setSelRow(null);setErr('');}
 
@@ -1908,16 +1922,20 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
       d.setDate(d.getDate()+1);
       nextDate=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     }
+    // Extra cuota = interest only, no capital (capital is still owed from original loan)
+    const intExtra=ultima.interes_cuota;
+    const degExtra=ultima.desgravamen||0;
+    const goExtra=ultima.gasto_operativo||0;
     const nuevaCuota={
       prestamo_id:loan.id,
       cliente:loan.cliente,
       n_cuota:ultima.n_cuota+1,
       fecha_vence:nextDate,
-      capital_cuota:ultima.capital_cuota,
-      interes_cuota:ultima.interes_cuota,
-      desgravamen:ultima.desgravamen,
-      gasto_operativo:ultima.gasto_operativo||0,
-      cuota_base:ultima.cuota_base,
+      capital_cuota:0,
+      interes_cuota:intExtra,
+      desgravamen:degExtra,
+      gasto_operativo:goExtra,
+      cuota_base:intExtra+degExtra+goExtra,
       tipo_pago:'NORMAL',
       monto_pagado:null,mora:null,fecha_pago:null,
     };
@@ -2005,8 +2023,8 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
             <thead><tr><th>#</th><th>Fecha</th><th>Cuota base</th><th>Mora</th><th>Total</th><th>Estado</th><th></th></tr></thead>
             <tbody>{pendientes.map((r,idx)=>{
               const est=getEst(r);
-              const esPrimera=idx===0;
-              const bloqueada=!esPrimera;
+              const esPrimera=!primeraDisponible||r.id===primeraDisponible.id;
+              const bloqueada=!esPrimera&&!['Solo int.'].includes(getEst(r))&&getEst(r)!=='Pagado'&&getEst(r)!=='Adelantado';
               return<tr key={r.id} style={{background:selRow?.id===r.id?'#e8f5ee':bloqueada?'#fafafa':undefined,opacity:bloqueada?.5:1}}>
                 <td style={{fontWeight:700,color:'var(--dark)'}}>{r.n_cuota}</td>
                 <td style={{color:est==='Vencido'?'var(--red)':undefined,fontWeight:est==='Vencido'?600:undefined,fontSize:12}}>{fmtD(r.fecha_vence)}</td>
