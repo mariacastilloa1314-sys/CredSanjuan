@@ -311,6 +311,13 @@ function getSaldo(r){
 function getEstPrestamo(cuotas){
   if(!cuotas.length)return'ACTIVO';
   const ests=cuotas.map(getEst);
+  // CANCELADO: all cuotas are in a final state (Pagado, Adelantado, Solo int., or CANCELAR PRESTAMO)
+  const finalStates=['Pagado','Adelantado','Solo int.'];
+  const allFinal=ests.every(e=>finalStates.includes(e));
+  // Also check if any cuota has CANCELAR PRESTAMO tipo_pago
+  const hasCancel=cuotas.some(r=>(r.tipo_pago||'').toUpperCase().includes('CANCELAR'));
+  if(allFinal&&hasCancel)return'CANCELADO';
+  if(allFinal&&ests.filter(e=>e==='Pagado'||e==='Adelantado').length===cuotas.length)return'CANCELADO';
   const pagadas=ests.filter(e=>e==='Pagado'||e==='Adelantado').length;
   if(pagadas>=cuotas.length)return'CANCELADO';
   if(ests.some(e=>e==='Vencido'))return'VENCIDO';
@@ -1894,9 +1901,7 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
   const loan=loans.find(l=>l.id===Number(selId)||l.id===selId);
   const loanRows=loan?sched.filter(r=>r.prestamo_id===loan.id).sort((a,b)=>a.n_cuota-b.n_cuota):[];
   const pendientes=loanRows.filter(r=>!['Pagado','Adelantado'].includes(getEst(r)));
-  // For ordering: Solo int. counts as paid so next cuota is unlocked
-  const efectivamentePagadas=loanRows.filter(r=>['Pagado','Adelantado','Solo int.'].includes(getEst(r))).length;
-  const primeraDisponible=pendientes.filter(r=>!['Solo int.'].includes(getEst(r)))[0];
+
 
   function selectLoan(l){setSelId(String(l.id));setSearch(l.cliente+' (ID:'+l.id+')');setSelRow(null);setErr('');}
 
@@ -2023,9 +2028,7 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
             <thead><tr><th>#</th><th>Fecha</th><th>Cuota base</th><th>Mora</th><th>Total</th><th>Estado</th><th></th></tr></thead>
             <tbody>{pendientes.map((r,idx)=>{
               const est=getEst(r);
-              const esPrimera=!primeraDisponible||r.id===primeraDisponible.id;
-              const bloqueada=!esPrimera&&!['Solo int.'].includes(getEst(r))&&getEst(r)!=='Pagado'&&getEst(r)!=='Adelantado';
-              return<tr key={r.id} style={{background:selRow?.id===r.id?'#e8f5ee':bloqueada?'#fafafa':undefined,opacity:bloqueada?.5:1}}>
+              return<tr key={r.id} style={{background:selRow?.id===r.id?'#e8f5ee':undefined}}>
                 <td style={{fontWeight:700,color:'var(--dark)'}}>{r.n_cuota}</td>
                 <td style={{color:est==='Vencido'?'var(--red)':undefined,fontWeight:est==='Vencido'?600:undefined,fontSize:12}}>{fmtD(r.fecha_vence)}</td>
                 <td>{fmt(r.cuota_base)}</td>
@@ -2033,8 +2036,7 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
                 <td style={{fontWeight:700}}>{fmt(N(r.cuota_base)+N(r.mora||0))}</td>
                 <td><Badge s={est}/></td>
                 <td><button className="btn btn-sm" onClick={()=>{setSelRow(r);setTipo('NORMAL');setMonto(String(parseFloat(N(r.cuota_base).toFixed(2))));setMora(r.mora?String(N(r.mora)):'');}}
-                    disabled={bloqueada} title={bloqueada?'Paga primero la cuota '+pendientes[0].n_cuota:''}>
-                    {bloqueada?'🔒 Bloqueada':'Seleccionar'}</button></td>
+>Seleccionar</button></td>
               </tr>;
             })}</tbody>
           </table></div>
