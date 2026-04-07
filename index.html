@@ -1510,10 +1510,11 @@ function Prestamos({loans,sched,onDelete,onVer,onPagar,onEditar}){
             const est=getEst2(l);
             const cancelado=est==='CANCELADO';
             const s2=sig(l.id);
-            const pagadas=cuotas.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).length;
+            const pagadas=cuotas.filter(r=>['Pagado','Adelantado','Solo int.'].includes(getEst(r))).length;
             const saldo=est==='CANCELADO'?0:cuotas.reduce((a,r)=>a+getSaldo(r),0);
             const cobrado=cob(l.id);
-            const pct=l.cuotas>0?Math.round(pagadas/l.cuotas*100):0;
+            const totalCuotas=cuotas.length||l.cuotas||1;
+            const pct=Math.round(pagadas/totalCuotas*100);
             return(
               <tr key={l.id} style={{opacity:cancelado?.55:1,background:cancelado?'#f9f9f9':undefined}}>
                 <td style={{color:'var(--grey)',fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>#{l.id}</td>
@@ -1528,7 +1529,7 @@ function Prestamos({loans,sched,onDelete,onVer,onPagar,onEditar}){
                   <span style={{fontSize:11,color:'var(--grey)',fontWeight:600}}>{(N(l.tasa)*100).toFixed(1)}%</span>
                 </td>
                 <td style={{textAlign:'center'}}>
-                  <div style={{fontWeight:700,fontSize:13,color:'var(--dark)'}}>{pagadas}<span style={{color:'var(--grey)',fontWeight:400}}>/{cuotas.length}</span></div>
+                  <div style={{fontWeight:700,fontSize:13,color:'var(--dark)'}}>{pagadas}<span style={{color:'var(--grey)',fontWeight:400}}>/{totalCuotas}</span></div>
                   <div style={{fontSize:9.5,color:'var(--grey)',letterSpacing:'.05em'}}>pagadas</div>
                 </td>
                 <td style={{minWidth:90}}>
