@@ -311,17 +311,17 @@ function getSaldo(r){
 function getEstPrestamo(cuotas){
   if(!cuotas.length)return'ACTIVO';
   const ests=cuotas.map(getEst);
-  // CANCELADO: all cuotas are in a final state (Pagado, Adelantado, Solo int., or CANCELAR PRESTAMO)
   const finalStates=['Pagado','Adelantado','Solo int.'];
   const allFinal=ests.every(e=>finalStates.includes(e));
-  // Also check if any cuota has CANCELAR PRESTAMO tipo_pago
-  const hasCancel=cuotas.some(r=>(r.tipo_pago||'').toUpperCase().includes('CANCELAR'));
-  if(allFinal&&hasCancel)return'CANCELADO';
-  if(allFinal&&ests.filter(e=>e==='Pagado'||e==='Adelantado').length===cuotas.length)return'CANCELADO';
+  const hasRealPayment=ests.some(e=>e==='Pagado'||e==='Adelantado');
+  // FIX: Solo int. con capital>0 = capital NO pagado → no puede ser CANCELADO
+  const hayCapitalSoloInt=cuotas.some(r=>getEst(r)==='Solo int.'&&N(r.capital_cuota)>0);
+  if(allFinal&&hasRealPayment&&!hayCapitalSoloInt)return'CANCELADO';
+  if(allFinal&&!hayCapitalSoloInt&&cuotas.every(r=>(r.tipo_pago||'').toUpperCase().includes('CANCELAR')))return'CANCELADO';
   const pagadas=ests.filter(e=>e==='Pagado'||e==='Adelantado').length;
-  if(pagadas>=cuotas.length)return'CANCELADO';
+  if(pagadas>=cuotas.length&&!hayCapitalSoloInt)return'CANCELADO';
   if(ests.some(e=>e==='Vencido'))return'VENCIDO';
-  if(pagadas>0)return'EN CURSO';
+  if(pagadas>0||ests.some(e=>e==='Solo int.'||e==='Parcial'))return'EN CURSO';
   return'ACTIVO';
 }
 function genCrono(loan,pid){
@@ -625,14 +625,20 @@ function App(){
     if(!row){showToast('Error: cuota no encontrada','err');return;}
 
     if(pago.tipoPago==='CANCELAR PRÉSTAMO'){
-      // Mark ALL pending cuotas of this loan as cancelled
-      // Only process cuotas that haven't been paid yet — leave Solo int. and Pagado alone
+      const _HC={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=minimal'};
+      // FIX A: Cerrar cuotas 'Solo int.' — conservar monto_pagado (interés ya cobrado en su momento)
+      // Solo se actualiza tipo_pago para que getSaldo()=0 y queden como 'Pagado'
+      const soloIntCuotas=sched.filter(r=>r.prestamo_id===row.prestamo_id&&getEst(r)==='Solo int.');
+      for(const sr of soloIntCuotas){
+        const _sr=await fetch(SURL+'/rest/v1/cronograma?id=eq.'+sr.id,{method:'PATCH',headers:_HC,body:JSON.stringify({tipo_pago:'CANCELAR PRÉSTAMO',fecha_pago:pago.fechaPago})});
+        if(!_sr.ok){const t=await _sr.text();showToast('Error cerrando Solo int.: '+t,'err');return;}
+      }
+      // FIX B: Cuotas realmente pendientes (Pendiente/Vencido/Parcial)
       const pendientes=sched.filter(r=>
         r.prestamo_id===row.prestamo_id&&
         !['Pagado','Adelantado','Solo int.','Parcial'].includes(getEst(r))
       );
-      // Pay selected cuota with entered amount; companion unpaid cuotas get monto_pagado=0
-      const updates=pendientes.map((r,i)=>({
+      const updates=pendientes.map(r=>({
         id:r.id,
         tipo_pago:'CANCELAR PRÉSTAMO',
         monto_pagado:r.id===rowId?N(pago.montoPagado):0,
@@ -640,35 +646,47 @@ function App(){
         fecha_pago:pago.fechaPago,
       }));
       for(const u of updates){
-        const _r=await fetch(SURL+'/rest/v1/cronograma?id=eq.'+u.id,{method:'PATCH',headers:{'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({tipo_pago:u.tipo_pago,monto_pagado:u.monto_pagado,mora:u.mora,fecha_pago:u.fecha_pago})});
+        const _r=await fetch(SURL+'/rest/v1/cronograma?id=eq.'+u.id,{method:'PATCH',headers:_HC,body:JSON.stringify({tipo_pago:u.tipo_pago,monto_pagado:u.monto_pagado,mora:u.mora,fecha_pago:u.fecha_pago})});
         if(!_r.ok){const t=await _r.text();showToast('Error: '+t,'err');return;}
       }
       setSched(p=>p.map(r=>{
+        const si=soloIntCuotas.find(x=>x.id===r.id);
+        if(si)return{...r,tipo_pago:'CANCELAR PRÉSTAMO',fecha_pago:pago.fechaPago};
         const u=updates.find(x=>x.id===r.id);
         return u?{...r,tipo_pago:u.tipo_pago,monto_pagado:u.monto_pagado,mora:u.mora,fecha_pago:u.fecha_pago}:r;
       }));
-      showToast('✓ Préstamo cancelado — '+updates.length+' cuotas cerradas');
+      showToast('✓ Préstamo cancelado — '+(soloIntCuotas.length+updates.length)+' cuotas cerradas');
     } else {
       // Normal single-cuota payment
-      // For SOLO INTERES: set cuota_base = just interest so capital stays as pending debt
-      const isSoloInt=pago.tipoPago==='SOLO INTERES';
+      // Register payment — keep capital_cuota unchanged (original value stays in DB)
       const patchData={tipo_pago:pago.tipoPago,monto_pagado:N(pago.montoPagado),mora:pago.mora?N(pago.mora):null,fecha_pago:pago.fechaPago};
-      if(isSoloInt){patchData.capital_cuota=0;}
       const _pr=await fetch(SURL+'/rest/v1/cronograma?id=eq.'+rowId,{method:'PATCH',headers:{'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(patchData)});
       if(!_pr.ok){const t=await _pr.text();showToast('Error: '+t,'err');return;}
-      setSched(p=>p.map(r=>r.id===rowId?{...r,...patchData,capital_cuota:isSoloInt?0:r.capital_cuota}:r));
+      setSched(p=>p.map(r=>r.id===rowId?{...r,...patchData}:r));
       showToast('✓ Pago registrado');
     }
     setPayingRow(null);
   }
 
   async function pagarTodo(loanId,fechaPago){
-    const pendientes=sched.filter(r=>r.prestamo_id===loanId&&getEst(r)!=='Pagado'&&getEst(r)!=='Adelantado');
-    for(const r of pendientes){
-      await fetch(SURL+'/rest/v1/cronograma?id=eq.'+r.id,{method:'PATCH',headers:{'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify({tipo_pago:'PAGO ADELANTADO',monto_pagado:N(r.cuota_base),mora:null,fecha_pago:fechaPago})});
+    const _H={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=minimal'};
+    // FIX: separar dos grupos para no sobreescribir monto_pagado de Solo int.
+    // Grupo A: cuotas Solo int. — solo cerrar tipo_pago, conservar monto_pagado (interés ya cobrado)
+    const soloInt=sched.filter(r=>r.prestamo_id===loanId&&getEst(r)==='Solo int.');
+    for(const r of soloInt){
+      await fetch(SURL+'/rest/v1/cronograma?id=eq.'+r.id,{method:'PATCH',headers:_H,body:JSON.stringify({tipo_pago:'PAGO ADELANTADO',fecha_pago:fechaPago})});
     }
-    setSched(p=>p.map(r=>pendientes.find(x=>x.id===r.id)?{...r,tipo_pago:'PAGO ADELANTADO',monto_pagado:N(r.cuota_base),mora:null,fecha_pago:fechaPago}:r));
-    showToast('✓ Préstamo cancelado — '+pendientes.length+' cuotas marcadas como pagadas');
+    // Grupo B: cuotas realmente pendientes — registrar cuota_base completa
+    const pendientes=sched.filter(r=>r.prestamo_id===loanId&&!['Pagado','Adelantado','Solo int.'].includes(getEst(r)));
+    for(const r of pendientes){
+      await fetch(SURL+'/rest/v1/cronograma?id=eq.'+r.id,{method:'PATCH',headers:_H,body:JSON.stringify({tipo_pago:'PAGO ADELANTADO',monto_pagado:N(r.cuota_base),mora:null,fecha_pago:fechaPago})});
+    }
+    setSched(p=>p.map(r=>{
+      if(soloInt.find(x=>x.id===r.id))return{...r,tipo_pago:'PAGO ADELANTADO',fecha_pago:fechaPago};
+      if(pendientes.find(x=>x.id===r.id))return{...r,tipo_pago:'PAGO ADELANTADO',monto_pagado:N(r.cuota_base),mora:null,fecha_pago:fechaPago};
+      return r;
+    }));
+    showToast('✓ Préstamo cancelado — '+(soloInt.length+pendientes.length)+' cuotas cerradas');
   }
 
   async function eliminarPrestamo(id){
@@ -680,16 +698,22 @@ function App(){
   }
 
   async function editarPrestamo(loan, newData, recalcFechas){
-    const H={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=representation'};
-    // PATCH prestamos
+    // FIX: return=minimal no requiere SELECT post-UPDATE (menos permisos)
+    //      apiFetch con timeout evita cuelgue en Supabase free tier
+    const H={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=minimal'};
     const patchBody={
       cliente:newData.cliente,garante:newData.garante||null,
       referencia:newData.referencia||null,cliente_externo:newData.clienteExterno,
       fecha_prestamo:newData.fechaPrestamo,
     };
-    const r=await fetch(SURL+'/rest/v1/prestamos?id=eq.'+loan.id,{method:'PATCH',headers:H,body:JSON.stringify(patchBody)});
-    if(!r.ok){const t=await r.text();throw new Error('Error actualizando préstamo: '+t);}
-    // Recalcular fechas cronograma si cambia fecha_prestamo
+    try{
+      const r=await apiFetch(SURL+'/rest/v1/prestamos?id=eq.'+loan.id,{method:'PATCH',headers:H,body:JSON.stringify(patchBody)},25000);
+      if(!r.ok){const t=await r.text();throw new Error('HTTP '+r.status+' — '+t);}
+    }catch(ex){
+      showToast('Error al editar: '+ex.message,'err');
+      setDbError('editarPrestamo: '+ex.message);
+      throw ex;
+    }
     if(recalcFechas&&newData.fechaPrestamo!==loan.fecha_prestamo){
       const rows=sched.filter(s=>s.prestamo_id===loan.id).sort((a,b)=>a.n_cuota-b.n_cuota);
       const fakeL={...loan,...patchBody,monto:loan.monto,tasa:loan.tasa,tipo:loan.tipo,cuotas:loan.cuotas,desgravamen:loan.desgravamen};
@@ -697,7 +721,7 @@ function App(){
       for(const row of rows){
         const nd=newDates.find(x=>x.n_cuota===row.n_cuota);
         if(!nd)continue;
-        await fetch(SURL+'/rest/v1/cronograma?id=eq.'+row.id,{method:'PATCH',headers:H,body:JSON.stringify({fecha_vence:nd.fecha_vence})});
+        await apiFetch(SURL+'/rest/v1/cronograma?id=eq.'+row.id,{method:'PATCH',headers:H,body:JSON.stringify({fecha_vence:nd.fecha_vence})},15000);
       }
     }
     await loadAll();
@@ -709,7 +733,7 @@ function App(){
   if(authLoading)return<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh'}}><Spin/></div>;
   if(!user)return<Login onLogin={setUser}/>;
 
-  const nav=[{id:'dashboard',ic:'dash',lbl:'Dashboard'},{id:'newLoan',ic:'plus',lbl:'Nuevo préstamo'},{id:'loans',ic:'list',lbl:'Préstamos'},{id:'schedule',ic:'cal',lbl:'Cronograma'},{id:'payments',ic:'pay',lbl:'Registrar pago'},{id:'export',ic:'trend',lbl:'Exportar Excel'}];
+  const nav=[{id:'dashboard',ic:'dash',lbl:'Dashboard'},{id:'newLoan',ic:'plus',lbl:'Nuevo préstamo'},{id:'loans',ic:'list',lbl:'Préstamos'},{id:'schedule',ic:'cal',lbl:'Cronograma'},{id:'payments',ic:'pay',lbl:'Registrar pago'},{id:'auditoria',ic:'check',lbl:'Auditoría'},{id:'export',ic:'trend',lbl:'Exportar Excel'}];
 
   console.log('App shell rendering with view=',view);
 
@@ -727,10 +751,13 @@ function App(){
         const isAlert=n.id==='dashboard';
         const alertTotal=isAlert?sched.filter(r=>{
           const est=getEst(r);
-          if(['Pagado','Adelantado','Solo int.','Parcial'].includes(est))return false;
+          if(['Pagado','Adelantado'].includes(est))return false;
           const today=new Date();today.setHours(0,0,0,0);
           const fv=new Date(r.fecha_vence+'T00:00:00');
           const diff=Math.floor((fv-today)/(1000*60*60*24));
+          // FIX: cuotas Solo int. vencidas con capital pendiente SÍ deben alertar
+          if(est==='Solo int.')return diff<0&&N(r.capital_cuota)>0;
+          if(est==='Parcial')return false;
           return diff<=0;
         }).length:0;
         return(
@@ -753,6 +780,7 @@ function App(){
         <div style={{fontSize:9.5,color:'rgba(255,255,255,.3)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>{user.rol||'usuario'}</div>
         </div>
         <button className="btn-lo" onClick={()=>{sessionStorage.removeItem('csj_user');setUser(null);}}>Cerrar sesión</button>
+        <div style={{fontSize:9,color:'rgba(255,255,255,.18)',textAlign:'center',marginTop:7,letterSpacing:'.08em'}}>v17 · fixes aplicados</div>
       </div>
     </>
   );
@@ -786,7 +814,8 @@ function App(){
           {view==='newLoan'  &&<NuevoPrestamo onCreate={crearPrestamo}/>}
           {view==='loans'   &&<Prestamos loans={loans} sched={sched} onDelete={eliminarPrestamo} onEditar={editarPrestamo} onVer={l=>{setViewLoan(l);goTo('schedule');}} onPagar={r=>{setPayingRow(r);goTo('payments');}}/>}
           {view==='schedule'&&<Cronograma loans={loans} sched={sched} viewLoan={viewLoan} onPagar={r=>{setPayingRow(r);goTo('payments');}}/>}
-          {view==='payments'&&<RegistrarPago loans={loans} sched={sched} payingRow={payingRow} onPay={registrarPago} onPagarTodo={pagarTodo}/>}
+          {view==='payments'&&<RegistrarPago loans={loans} sched={sched} payingRow={payingRow} onPay={registrarPago} onPagarTodo={pagarTodo} onReload={loadAll} onToast={showToast}/>}
+          {view==='auditoria'&&<Auditoria loans={loans} sched={sched}/>}
           {view==='export'   &&<ExportarExcel loans={loans} sched={sched}/>}
         </div>
       </div>
@@ -869,7 +898,14 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
   // ── Alertas de cobro ──
   const _today=new Date();_today.setHours(0,0,0,0);
   const _getDiff=fv=>{const d=new Date(fv+'T00:00:00');return Math.floor((d-_today)/(1000*60*60*24));};
-  const _pending=sched.filter(r=>!['Pagado','Adelantado','Solo int.','Parcial'].includes(getEst(r)));
+  // FIX: incluir Solo int. vencidas con capital pendiente — el capital está en mora aunque el interés fue pagado
+  const _pending=sched.filter(r=>{
+    const est=getEst(r);
+    if(['Pagado','Adelantado'].includes(est))return false;
+    if(est==='Solo int.')return _getDiff(r.fecha_vence)<0&&N(r.capital_cuota)>0;
+    if(est==='Parcial')return false;
+    return true;
+  });
   const alertHoy=_pending.filter(r=>_getDiff(r.fecha_vence)===0);
   const alertProx=_pending.filter(r=>{const d=_getDiff(r.fecha_vence);return d>0&&d<=3;});
   const alertVenc=_pending.filter(r=>_getDiff(r.fecha_vence)<0);
@@ -1479,7 +1515,7 @@ function Prestamos({loans,sched,onDelete,onVer,onPagar,onEditar}){
 
   return(
     <div style={{animation:'fadeIn .3s ease'}}>
-      {editLoan&&<EditarModal loan={editLoan} onClose={()=>setEditLoan(null)} onSave={async(data)=>{await onEditar(editLoan.id,data);setEditLoan(null);}}/>}
+      {editLoan&&<EditarModal loan={editLoan} onClose={()=>setEditLoan(null)} onSave={async(loan,newData,recalc)=>{await onEditar(loan,newData,recalc);setEditLoan(null);}}/>}
       <div><div className="pg-ey">Portafolio</div><div className="pg-ti">Préstamos</div></div>
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:13,flexWrap:'wrap'}}>
@@ -1869,7 +1905,7 @@ function Cronograma({loans,sched,viewLoan,onPagar}){
   );
 }
 
-function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
+function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo,onReload,onToast}){
   const[selId,setSelId]=useState(payingRow?String(payingRow.prestamo_id):'');
   const[search,setSearch]=useState(payingRow?String(payingRow.prestamo_id):'');
   const[selRow,setSelRow]=useState(payingRow||null);
@@ -1946,13 +1982,26 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
       monto_pagado:null,mora:null,fecha_pago:null,
     };
     try{
-      const H={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=representation'};
+      const H={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Content-Type':'application/json','Prefer':'return=minimal'};
       const r=await fetch(SURL+'/rest/v1/cronograma',{method:'POST',headers:H,body:JSON.stringify(nuevaCuota)});
       if(!r.ok){const t=await r.text();setErr('Error: '+t);return;}
       setErr('');
-      alert('✓ Cuota extra #'+(ultima.n_cuota+1)+' agregada para '+nextDate.split('-').reverse().join('/'));
-      // Reload
-      window.location.reload();
+      if(onToast)onToast('✓ Cuota extra #'+(ultima.n_cuota+1)+' agregada — '+nextDate.split('-').reverse().join('/'));
+      if(onReload)await onReload();
+    }catch(ex){setErr('Error: '+ex.message);}
+  }
+
+  // FIX NUEVO: eliminar cuota extra agregada por error (solo las que tienen capital=0 y están fuera del plazo original)
+  async function eliminarCuotaExtra(cuota){
+    if(!confirm('¿Eliminar cuota extra #'+cuota.n_cuota+'? Esta acción no se puede deshacer.'))return;
+    const H={'apikey':SKEY,'Authorization':'Bearer '+SKEY,'Prefer':'return=minimal'};
+    try{
+      const r=await fetch(SURL+'/rest/v1/cronograma?id=eq.'+cuota.id,{method:'DELETE',headers:H});
+      if(!r.ok){const t=await r.text();setErr('Error al eliminar: '+t);return;}
+      setErr('');
+      if(selRow&&selRow.id===cuota.id){setSelRow(null);setMonto('');setMora('');}
+      if(onToast)onToast('Cuota extra #'+cuota.n_cuota+' eliminada');
+      if(onReload)await onReload();
     }catch(ex){setErr('Error: '+ex.message);}
   }
 
@@ -2026,18 +2075,26 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
               </button>
             </div>
           <div className="tbl-wrap"><table>
-            <thead><tr><th>#</th><th>Fecha</th><th>Cuota base</th><th>Mora</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Fecha</th><th>Cuota base</th><th>Mora</th><th>Total</th><th>Estado</th><th>Acción</th></tr></thead>
             <tbody>{pendientes.map((r,idx)=>{
               const est=getEst(r);
-              return<tr key={r.id} style={{background:selRow?.id===r.id?'#e8f5ee':undefined}}>
-                <td style={{fontWeight:700,color:'var(--dark)'}}>{r.n_cuota}</td>
+              // Cuota extra = capital_cuota=0 Y n_cuota > cuotas originales del préstamo
+              const esExtra=N(r.capital_cuota)===0&&loan&&r.n_cuota>N(loan.cuotas);
+              return<tr key={r.id} style={{background:selRow?.id===r.id?'#e8f5ee':esExtra?'#f0f7ff':undefined}}>
+                <td style={{fontWeight:700,color:'var(--dark)'}}>
+                  {r.n_cuota}
+                  {esExtra&&<span style={{fontSize:9,background:'#3b82f6',color:'#fff',borderRadius:3,padding:'1px 5px',marginLeft:5,fontWeight:600}}>EXTRA</span>}
+                </td>
                 <td style={{color:est==='Vencido'?'var(--red)':undefined,fontWeight:est==='Vencido'?600:undefined,fontSize:12}}>{fmtD(r.fecha_vence)}</td>
                 <td>{fmt(r.cuota_base)}</td>
                 <td style={{color:'var(--red)'}}>{r.mora?fmt(r.mora):''}</td>
                 <td style={{fontWeight:700}}>{fmt(N(r.cuota_base)+N(r.mora||0))}</td>
                 <td><Badge s={est}/></td>
-                <td><button className="btn btn-sm" onClick={()=>{setSelRow(r);setTipo('NORMAL');setMonto(String(parseFloat(N(r.cuota_base).toFixed(2))));setMora(r.mora?String(N(r.mora)):'');}}
->Seleccionar</button></td>
+                <td style={{display:'flex',gap:5,alignItems:'center'}}>
+                  <button className="btn btn-sm" onClick={()=>{setSelRow(r);setTipo('NORMAL');setMonto(String(parseFloat(N(r.cuota_base).toFixed(2))));setMora(r.mora?String(N(r.mora)):'');}}
+>Seleccionar</button>
+                  {esExtra&&<button className="btn-del" title="Eliminar cuota extra" onClick={()=>eliminarCuotaExtra(r)}>×</button>}
+                </td>
               </tr>;
             })}</tbody>
           </table></div>
@@ -2121,9 +2178,9 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
             <div style={{gridColumn:'1/-1',background:'var(--alt)',borderRadius:6,padding:'8px 12px',fontSize:11.5,color:'var(--grey)',border:'1px solid var(--border)'}}>
               {tipo==='NORMAL'&&<span>✓ <b>Pago normal</b> — cuota completa. Si hay mora por atraso, agrégala en el campo Mora.</span>}
               {tipo==='PARCIAL'&&<span>⚡ <b>Abono parcial</b> — la cuota quedará con saldo pendiente hasta completarla.</span>}
-              {tipo==='SOLO INTERES'&&<span>ℹ <b>Solo interés</b> — el capital de esta cuota queda pendiente. El préstamo sigue EN CURSO.</span>}
+              {tipo==='SOLO INTERES'&&<span>ℹ <b>Solo interés</b> — solo se cobra el interés. El capital queda diferido. Usar "Cancelar préstamo" al final para saldar todo el capital acumulado.</span>}
               {tipo==='PAGO ADELANTADO'&&<span>⏩ <b>Pago adelantado</b> — cancela esta cuota antes de su vencimiento.</span>}
-              {tipo==='CANCELAR PRÉSTAMO'&&<span>🔒 <b>Cancelar préstamo</b> — monto = saldo total del préstamo. Usa el campo Mora para interés adicional acordado.</span>}
+              {tipo==='CANCELAR PRÉSTAMO'&&<span>🔒 <b>Cancelar préstamo</b> — cierra TODAS las cuotas. El monto incluye capitales diferidos de cuotas "Solo interés" + capital e interés de cuotas pendientes.</span>}
             </div>
             <div>
               <span className="lbl">Fecha de pago</span>
@@ -2135,6 +2192,191 @@ function RegistrarPago({loans,sched,payingRow,onPay,onPagarTodo}){
             <button className="btn" disabled={saving} onClick={pagar}>{saving?'Guardando...':'Registrar pago'}</button>
             <button className="btn-ol" onClick={()=>{setSelRow(null);setMonto('');setMora('');}}>Cancelar</button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ══ AUDITORÍA & CUADRE ════════════════════════════════════════ */
+function Auditoria({loans,sched}){
+  if(!Array.isArray(loans)||!Array.isArray(sched))return<div style={{padding:30,textAlign:'center',color:'var(--grey)'}}>Cargando...</div>;
+  const D='#1B4F45';const T='#2d8a7a';const T2='#379F8B';
+
+  // ── Cálculos globales ──────────────────────────────────────────
+  const totPrestado=loans.reduce((a,l)=>a+N(l.monto),0);
+
+  // Capital recuperado = capital_cuota de cuotas Pagado / Adelantado
+  const cuotasPagadas=sched.filter(r=>['Pagado','Adelantado'].includes(getEst(r)));
+  const totCapRecuperado=cuotasPagadas.reduce((a,r)=>a+N(r.capital_cuota),0);
+
+  // Interés cobrado = interes_cuota de cuotas que tienen algún pago registrado
+  const cuotasConPago=sched.filter(r=>N(r.monto_pagado)>0);
+  const totIntCobrado=cuotasConPago.reduce((a,r)=>a+N(r.interes_cuota),0);
+
+  // Desgravamen y G.Operativo cobrados (de cuotas pagadas)
+  const totDegCobrado=cuotasPagadas.reduce((a,r)=>a+N(r.desgravamen),0);
+  const totGoCobrado=cuotasPagadas.reduce((a,r)=>a+N(r.gasto_operativo||0),0);
+
+  // Mora cobrada
+  const totMoraCobrada=sched.filter(r=>N(r.mora)>0).reduce((a,r)=>a+N(r.mora),0);
+
+  // Total calculado vs total en BD
+  const totCalculado=totCapRecuperado+totIntCobrado+totDegCobrado+totGoCobrado+totMoraCobrada;
+  const totBD=cuotasConPago.reduce((a,r)=>a+N(r.monto_pagado),0);
+  const diferencia=Math.round((totCalculado-totBD)*100)/100;
+  const cuadra=Math.abs(diferencia)<0.5;// tolerancia 0.50 por redondeos de Math.ceil en genCrono
+
+  // Capital en calle (solo préstamos activos)
+  const capitalEnCalle=loans
+    .filter(l=>getEstPrestamo(sched.filter(r=>r.prestamo_id===l.id))!=='CANCELADO')
+    .reduce((a,l)=>a+N(l.monto),0)-
+    sched.filter(r=>['Pagado','Adelantado'].includes(getEst(r))&&
+      getEstPrestamo(sched.filter(s=>s.prestamo_id===r.prestamo_id))!=='CANCELADO')
+    .reduce((a,r)=>a+N(r.capital_cuota),0);
+
+  // ── Por préstamo — solo mostrar los que tienen discrepancia ──
+  const porPrestamo=loans.map(l=>{
+    const cuotas=sched.filter(r=>r.prestamo_id===l.id);
+    const pgdas=cuotas.filter(r=>['Pagado','Adelantado'].includes(getEst(r)));
+    const conPago=cuotas.filter(r=>N(r.monto_pagado)>0);
+    const capRec=pgdas.reduce((a,r)=>a+N(r.capital_cuota),0);
+    const intCob=conPago.reduce((a,r)=>a+N(r.interes_cuota),0);
+    const degCob=pgdas.reduce((a,r)=>a+N(r.desgravamen),0);
+    const goCob=pgdas.reduce((a,r)=>a+N(r.gasto_operativo||0),0);
+    const moraCob=cuotas.filter(r=>N(r.mora)>0).reduce((a,r)=>a+N(r.mora),0);
+    const calc=capRec+intCob+degCob+goCob+moraCob;
+    const bd=conPago.reduce((a,r)=>a+N(r.monto_pagado),0);
+    const diff=Math.round((calc-bd)*100)/100;
+    const est=getEstPrestamo(cuotas);
+    return{...l,capRec,intCob,moraCob,calc,bd,diff,est};
+  }).filter(l=>Math.abs(l.diff)>=0.5);
+
+  const kpis=[
+    {l:'Capital prestado',    v:totPrestado,         c:D,      bg:'var(--light)'},
+    {l:'Capital recuperado',  v:totCapRecuperado,    c:T,      bg:'#e4f4f0'},
+    {l:'Capital en calle',    v:Math.max(0,capitalEnCalle),c:'#a0620a',bg:'#fef3e2'},
+    {l:'Interés cobrado',     v:totIntCobrado,       c:T2,     bg:'#e4f4f0'},
+    {l:'Mora cobrada',        v:totMoraCobrada,      c:'#b52a2a',bg:'#fde8e8'},
+    {l:'Total calculado',     v:totCalculado,        c:D,      bg:'var(--light)'},
+    {l:'Total en BD',         v:totBD,               c:cuadra?T:'#b52a2a',bg:cuadra?'#dff2e8':'#fde8e8'},
+    {l:'Diferencia',          v:Math.abs(diferencia),c:cuadra?T:'#b52a2a',bg:cuadra?'#dff2e8':'#fde8e8',
+      override:cuadra?'S/ 0.00':undefined},
+  ];
+
+  return(
+    <div style={{animation:'fadeIn .3s ease'}}>
+      <div><div className="pg-ey">Control interno</div>
+        <div className="pg-ti">Auditoría <span style={{color:T,fontWeight:400}}>&amp; Cuadre</span></div>
+        <div className="pg-su">Reconciliación financiera en tiempo real — verifica que los montos en BD coincidan con los cálculos esperados</div>
+      </div>
+
+      {/* Banner de estado */}
+      <div style={{background:cuadra?'#dff2e8':'#fde8e8',border:'2px solid '+(cuadra?'#7dbfa0':'#f5a5a5'),borderRadius:10,padding:'16px 22px',marginBottom:16,display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
+        <span style={{fontSize:30,flexShrink:0}}>{cuadra?'✅':'🔴'}</span>
+        <div style={{flex:1,minWidth:200}}>
+          <div style={{fontWeight:700,fontSize:15,color:cuadra?'#1e6e3a':'#8b1a1a'}}>
+            {cuadra?'Cuadre perfecto — todos los registros coinciden':'⚠ Inconsistencia detectada — revisar préstamos marcados abajo'}
+          </div>
+          <div style={{fontSize:12,color:cuadra?'#5a8a6a':'#c07070',marginTop:3}}>
+            {cuadra
+              ?'Total calculado = Total en BD · Sin diferencias detectadas'
+              :'Diferencia total: S/ '+Math.abs(diferencia).toFixed(2)+' — ver tabla de préstamos con problema'}
+          </div>
+        </div>
+        {!cuadra&&<div style={{textAlign:'center',flexShrink:0}}>
+          <div style={{fontSize:10,color:'#c07070',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>Préstamos con problema</div>
+          <div style={{fontSize:26,fontWeight:700,color:'#b52a2a',lineHeight:1}}>{porPrestamo.length}</div>
+        </div>}
+      </div>
+
+      {/* KPI strip */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:14}}>
+        {kpis.map((k,i)=>(
+          <div key={i} style={{background:k.bg,borderRadius:6,padding:'12px 14px',border:'1px solid rgba(0,0,0,.06)'}}>
+            <div style={{fontSize:9.5,fontWeight:700,color:k.c,textTransform:'uppercase',letterSpacing:'.08em',opacity:.7,marginBottom:4}}>{k.l}</div>
+            <div style={{fontSize:16,fontWeight:700,color:k.c,letterSpacing:'-.02em'}}>{k.override||fmt(k.v)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Fórmula explicada */}
+      <div className="card" style={{marginBottom:12}}>
+        <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Fórmula de reconciliación</div></div>
+        <div className="c-bd">
+          <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:'2px 24px',fontSize:13,maxWidth:520}}>
+            {[
+              ['Capital recuperado',          fmt(totCapRecuperado), D],
+              ['+ Interés cobrado',            fmt(totIntCobrado),    T],
+              ...(totDegCobrado>0?[['+ Desgravamen cobrado',fmt(totDegCobrado),'#555']]:[]),
+              ...(totGoCobrado>0? [['+ G. Operativo cobrado',fmt(totGoCobrado),'#555']]:[]),
+              ...(totMoraCobrada>0?[['+ Mora cobrada',fmt(totMoraCobrada),'#b52a2a']]:[]),
+            ].map(([lbl,val,col],i)=>[
+              <span key={'l'+i} style={{color:'#555',padding:'3px 0',borderBottom:'1px solid #f0f4f0'}}>{lbl}</span>,
+              <span key={'v'+i} style={{fontWeight:700,color:col,padding:'3px 0',borderBottom:'1px solid #f0f4f0',textAlign:'right'}}>{val}</span>
+            ])}
+            <span style={{fontWeight:700,color:D,paddingTop:6,borderTop:'2px solid var(--border)'}}>= Total calculado</span>
+            <span style={{fontWeight:700,color:D,paddingTop:6,borderTop:'2px solid var(--border)',textAlign:'right'}}>{fmt(totCalculado)}</span>
+            <span style={{color:'#555',paddingTop:2}}>vs. Total en BD (monto_pagado)</span>
+            <span style={{fontWeight:700,color:cuadra?T:'#b52a2a',paddingTop:2,textAlign:'right'}}>{fmt(totBD)}</span>
+            <span style={{fontWeight:700,fontSize:14,color:cuadra?T:'#b52a2a',paddingTop:6,borderTop:'2px solid var(--border)'}}>Diferencia</span>
+            <span style={{fontWeight:700,fontSize:15,color:cuadra?T:'#b52a2a',paddingTop:6,borderTop:'2px solid var(--border)',textAlign:'right'}}>{cuadra?'S/ 0.00':'S/ '+diferencia.toFixed(2)}</span>
+          </div>
+          <div style={{marginTop:12,fontSize:11.5,color:'var(--grey)',background:'var(--alt)',borderRadius:6,padding:'8px 12px',border:'1px solid var(--border)'}}>
+            ℹ La fórmula usa <b>capital_cuota</b> e <b>interes_cuota</b> de la BD para el "calculado" y <b>monto_pagado</b> para el "en BD". Si coinciden, los registros son consistentes.
+          </div>
+        </div>
+      </div>
+
+      {/* Tabla de discrepancias */}
+      {porPrestamo.length>0&&(
+        <div className="card" style={{marginBottom:12}}>
+          <div className="c-hd">
+            <div className="c-dot" style={{background:'var(--red)'}}/>
+            <div className="c-hd-t" style={{color:'var(--red)'}}>Préstamos con inconsistencia ({porPrestamo.length})</div>
+          </div>
+          <div className="tbl-wrap"><table>
+            <thead><tr>
+              <th>ID</th><th>Cliente</th><th>Estado</th>
+              <th style={{textAlign:'right'}}>Cap. rec.</th>
+              <th style={{textAlign:'right'}}>Interés cob.</th>
+              <th style={{textAlign:'right'}}>Mora</th>
+              <th style={{textAlign:'right'}}>Total calc.</th>
+              <th style={{textAlign:'right'}}>Total BD</th>
+              <th style={{textAlign:'right'}}>Diferencia</th>
+            </tr></thead>
+            <tbody>
+              {porPrestamo.map(l=>(
+                <tr key={l.id} style={{background:'#fff8f8'}}>
+                  <td style={{fontWeight:700,color:'var(--dark)',fontSize:11}}>#{l.id}</td>
+                  <td style={{fontWeight:600}}>{l.cliente}</td>
+                  <td><Badge s={l.est}/></td>
+                  <td style={{textAlign:'right'}}>{fmt(l.capRec)}</td>
+                  <td style={{textAlign:'right'}}>{fmt(l.intCob)}</td>
+                  <td style={{textAlign:'right'}}>{fmt(l.moraCob)}</td>
+                  <td style={{textAlign:'right',fontWeight:700,color:D}}>{fmt(l.calc)}</td>
+                  <td style={{textAlign:'right',fontWeight:700,color:'#b52a2a'}}>{fmt(l.bd)}</td>
+                  <td style={{textAlign:'right',fontWeight:700,color:'#b52a2a'}}>S/ {Math.abs(l.diff).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        </div>
+      )}
+
+      {/* All good */}
+      {cuadra&&loans.length>0&&(
+        <div style={{textAlign:'center',padding:'36px 0'}}>
+          <div style={{fontSize:42,marginBottom:10}}>✅</div>
+          <div style={{fontWeight:700,fontSize:16,color:T,marginBottom:5}}>Todo cuadra perfectamente</div>
+          <div style={{fontSize:13,color:'var(--grey)'}}>No se detectaron inconsistencias en ninguno de los {loans.length} préstamos.</div>
+        </div>
+      )}
+      {loans.length===0&&(
+        <div style={{textAlign:'center',padding:'36px 0',color:'var(--grey)'}}>
+          <div style={{fontSize:36,marginBottom:10}}>📋</div>
+          <div style={{fontWeight:700}}>Sin préstamos registrados</div>
         </div>
       )}
     </div>
