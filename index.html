@@ -786,7 +786,7 @@ function App(){
         <div style={{fontSize:9.5,color:'rgba(255,255,255,.3)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>{user.rol||'usuario'}</div>
         </div>
         <button className="btn-lo" onClick={()=>{sessionStorage.removeItem('csj_user');setUser(null);}}>Cerrar sesión</button>
-        <div style={{fontSize:9,color:'rgba(255,255,255,.18)',textAlign:'center',marginTop:7,letterSpacing:'.08em'}}>v18 · auditoria corregida</div>
+        <div style={{fontSize:9,color:'rgba(255,255,255,.18)',textAlign:'center',marginTop:7,letterSpacing:'.08em'}}>v19 · capital unificado</div>
       </div>
     </>
   );
@@ -830,99 +830,128 @@ function App(){
   );
 }
 
+
+// ── FUNCIÓN COMPARTIDA — Capital recuperado (misma lógica en todo el app) ──
+// Para CANCELADOS: todo el capital (loan.monto) fue recuperado.
+// Para ACTIVOS:    solo el capital de cuotas efectivamente pagadas/adelantadas.
+// Esto es independiente de si las cuotas tenían tipo_pago='SOLO INTERES' antes
+// de ser cerradas, evitando la subcuenta histórica.
+function calcCapRecuperado(loans, sched){
+  const cancelSet=new Set(
+    loans
+      .filter(l=>getEstPrestamo(sched.filter(r=>Number(r.prestamo_id)===Number(l.id)))==='CANCELADO')
+      .map(l=>Number(l.id))
+  );
+  // Cancelados: capital 100% recuperado = loan.monto
+  const capCanc=loans.filter(l=>cancelSet.has(Number(l.id))).reduce((a,l)=>a+N(l.monto),0);
+  // Activos: solo cuotas Pagado/Adelantado fuera de préstamos cancelados
+  const capActivo=sched
+    .filter(r=>['Pagado','Adelantado'].includes(getEst(r))&&!cancelSet.has(Number(r.prestamo_id)))
+    .reduce((a,r)=>a+N(r.capital_cuota),0);
+  return{total:capCanc+capActivo, capCanc, capActivo, cancelSet};
+}
+// ─────────────────────────────────────────────────────────────────
+
 /* ══ DASHBOARD ══════════════════════════════════════════════════ */
 function Dashboard({loans,sched,goTo,setPayingRow}){
-  console.log('Dashboard render',{loans:loans?.length,sched:sched?.length});
-  // Safety guards - ensure arrays
   if(!Array.isArray(loans)||!Array.isArray(sched))return(
     <div style={{padding:30,textAlign:'center',color:'var(--grey)'}}>
       <div style={{fontSize:40,marginBottom:12}}>⟳</div>
       <div style={{fontWeight:700,marginBottom:8}}>Cargando datos...</div>
     </div>
   );
-  const venc=sched.filter(r=>getEst(r)==='Vencido');
-  const totPres=loans.reduce((a,l)=>a+N(l.monto),0);
-  const totCob=sched.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
-  const montoVenc=venc.reduce((a,r)=>a+getSaldo(r),0);
-  // Number() cast garantiza comparación correcta sin importar si id viene como string o number
-  const canceladosIds=new Set(loans.filter(l=>getEstPrestamo(sched.filter(r=>Number(r.prestamo_id)===Number(l.id)))==='CANCELADO').map(l=>Number(l.id)));
-  const porCobrar=sched.filter(r=>!['Pagado','Adelantado'].includes(getEst(r))&&!canceladosIds.has(Number(r.prestamo_id))).reduce((a,r)=>a+getSaldo(r),0);
-  const nPag=sched.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).length;
-  const nPend=sched.filter(r=>getEst(r)==='Pendiente').length;
-  const nVenc=venc.length;
-  // ── Cálculos financieros CORRECTOS ──
-  // Solo cuotas realmente cobradas (Pagado, Adelantado, Solo int.)
-  const cuotasPagadas=sched.filter(r=>['Pagado','Adelantado','Solo int.'].includes(getEst(r)));
-  const cuotasPagadasCapital=sched.filter(r=>['Pagado','Adelantado'].includes(getEst(r)));
-  // Interés COBRADO = solo de cuotas efectivamente pagadas (no proyectado)
-  const totInt=cuotasPagadas.reduce((a,r)=>a+N(r.interes_cuota),0);
-  // Capital RECUPERADO = capital_cuota de cuotas pagadas/adelantadas (no incluye solo-interés)
-  const totCapRecuperado=cuotasPagadasCapital.reduce((a,r)=>a+N(r.capital_cuota),0);
-  // Mora COBRADA = solo de cuotas que tienen pago registrado
-  const totMora=sched.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.mora||0),0);
-  const total=sched.length||1;
 
-  // Last 7 months data
+  const D='#1B4F45'; const T='#2d8a7a'; const T2='#379F8B';
+
+  // ── CÁLCULOS FINANCIEROS — fuente única de verdad ─────────────
+  const totPres    = loans.reduce((a,l)=>a+N(l.monto),0);
+  const nLoans     = loans.length;
+  const nCancelados= loans.filter(l=>getEstPrestamo(sched.filter(r=>Number(r.prestamo_id)===Number(l.id)))==='CANCELADO').length;
+  const nActivos   = nLoans - nCancelados;
+
+  // Capital recuperado: cancelados=loan.monto, activos=cuotas pagadas
+  const {total:totCapRec, cancelSet} = calcCapRecuperado(loans, sched);
+  const capEnCalle = Math.max(0, totPres - totCapRec);
+
+  // Total cobrado (cash real recibido = sum monto_pagado)
+  const totCob = sched.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
+
+  // Interés cobrado = interes_cuota de cuotas con pago
+  const totInt = sched.filter(r=>N(r.monto_pagado)>0).reduce((a,r)=>a+N(r.interes_cuota),0);
+
+  // Mora cobrada
+  const totMora = sched.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.mora||0),0);
+
+  // Cuotas pendientes — excluir cancelados
+  const cuotasPend = sched.filter(r=>
+    !['Pagado','Adelantado'].includes(getEst(r)) &&
+    !cancelSet.has(Number(r.prestamo_id))
+  );
+  const porCobrar = cuotasPend.reduce((a,r)=>a+getSaldo(r),0);
+
+  // Vencido
+  const venc        = sched.filter(r=>getEst(r)==='Vencido');
+  const montoVenc   = venc.reduce((a,r)=>a+getSaldo(r),0);
+
+  // Conteos cuotas
+  const nPag  = sched.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).length;
+  const nPend = sched.filter(r=>getEst(r)==='Pendiente').length;
+  const nVenc = venc.length;
+  const total = sched.length||1;
+
+  // Ratios
+  const pctRec  = totPres>0?Math.round(totCapRec/totPres*100):0;
+  const pctCalle= totPres>0?Math.round(capEnCalle/totPres*100):0;
+  const pctVenc = totPres>0?Math.round(montoVenc/totPres*100):0;
+  const pctCob  = nPag+nPend+nVenc>0?Math.round(nPag/(nPag+nPend+nVenc)*100):0;
+
+  // ── Últimos 7 meses ───────────────────────────────────────────
   const meses=Array.from({length:7},(_,i)=>{
     const d=new Date();d.setMonth(d.getMonth()-(6-i));
     const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     const lbl=['En','Fe','Ma','Ab','My','Jn','Jl','Ag','Se','Oc','No','Di'][d.getMonth()];
     const cob=sched.filter(r=>r.fecha_pago?.substring(0,7)===key).reduce((a,r)=>a+N(r.monto_pagado),0);
     const pre=loans.filter(l=>l.fecha_prestamo?.substring(0,7)===key).reduce((a,l)=>a+N(l.monto),0);
-    const mor=sched.filter(r=>r.fecha_pago?.substring(0,7)===key).reduce((a,r)=>a+N(r.mora||0),0);
-    return{lbl,cob,pre,mor};
+    return{lbl,cob,pre};
   });
   const maxM=Math.max(...meses.map(m=>Math.max(m.cob,m.pre)),1);
-
-  // Trend line points for cobrado
   const W=460,H=90,pad=8;
   const divisor=meses.length>1?meses.length-1:1;
-  const pts=meses.map((m,i)=>{
-    const x=pad+(i/divisor)*(W-pad*2);
-    const y=H-pad-(m.cob/maxM)*(H-pad*2);
-    return[x,y];
-  });
-  const polyline=pts.length>1?pts.map(p=>p.join(',')).join(' '):'';
-  const area=pts.length>1?`M${pts[0][0]},${H-pad} `+pts.map(p=>`L${p[0]},${p[1]}`).join(' ')+` L${pts[pts.length-1][0]},${H-pad} Z`:'';
+  const pts=meses.map((m,i)=>([pad+(i/divisor)*(W-pad*2), H-pad-(m.cob/maxM)*(H-pad*2)]));
+  const polyline=pts.map(p=>p.join(',')).join(' ');
+  const area=`M${pts[0][0]},${H-pad} `+pts.map(p=>`L${p[0]},${p[1]}`).join(' ')+` L${pts[pts.length-1][0]},${H-pad} Z`;
 
-  // Top clients by monto prestado
-  const byClient={};
-  loans.forEach(l=>{if(!byClient[l.cliente])byClient[l.cliente]=0;byClient[l.cliente]+=N(l.monto);});
-  const topClients=Object.entries(byClient).sort((a,b)=>b[1]-a[1]).slice(0,4);
-  const maxCli=topClients[0]?topClients[0][1]:1;
-
-  const D='#1B4F45'; const T='#2d8a7a'; const T2='#379F8B'; const M='#d4ede5';
-
-  const kpis=[
-    {l:'Capital prestado', v:fmt(totPres),  sub:loans.length+' préstamos',  bg:'#1B4F45', tc:'#fff',    sc:'rgba(255,255,255,.55)'},
-    {l:'Total cobrado',    v:fmt(totCob),   sub:nPag+' cuotas pagadas',    bg:'#2d8a7a', tc:'#fff',    sc:'rgba(255,255,255,.55)'},
-    {l:'Por cobrar',       v:fmt(porCobrar),sub:nPend+' cuotas pendientes',bg:'#e8f0e8', tc:'#1B4F45', sc:'#5a7a5a'},
-    {l:'Monto vencido',    v:fmt(montoVenc),sub:nVenc+' cuotas vencidas',  bg:'#fde8e8', tc:'#b52a2a', sc:'#c97070'},
-    {l:'Mora acumulada',   v:fmt(totMora),  sub:'mora registrada',          bg:'#fff5e6', tc:'#a0620a', sc:'#c09050'},
-    {l:'Interés cobrado',  v:fmt(totInt),   sub:'de cuotas pagadas',        bg:'#e4f4f0', tc:'#1B6B5A', sc:'#5a8a80'},
-  ];
-
-  // ── Alertas de cobro ──
+  // ── Alertas ───────────────────────────────────────────────────
   const _today=new Date();_today.setHours(0,0,0,0);
-  const _getDiff=fv=>{const d=new Date(fv+'T00:00:00');return Math.floor((d-_today)/(1000*60*60*24));};
-  // FIX: incluir Solo int. vencidas con capital pendiente — el capital está en mora aunque el interés fue pagado
+  const _diff=fv=>Math.floor((new Date(fv+'T00:00:00')-_today)/(864e5));
   const _pending=sched.filter(r=>{
     const est=getEst(r);
     if(['Pagado','Adelantado'].includes(est))return false;
-    if(est==='Solo int.')return _getDiff(r.fecha_vence)<0&&N(r.capital_cuota)>0;
+    if(cancelSet.has(Number(r.prestamo_id)))return false;
+    if(est==='Solo int.')return _diff(r.fecha_vence)<0&&N(r.capital_cuota)>0;
     if(est==='Parcial')return false;
     return true;
   });
-  const alertHoy=_pending.filter(r=>_getDiff(r.fecha_vence)===0);
-  const alertProx=_pending.filter(r=>{const d=_getDiff(r.fecha_vence);return d>0&&d<=3;});
-  const alertVenc=_pending.filter(r=>_getDiff(r.fecha_vence)<0);
-  const alertDiffMap=new Map(_pending.map(r=>[r.id,_getDiff(r.fecha_vence)]));
+  const alertHoy =_pending.filter(r=>_diff(r.fecha_vence)===0);
+  const alertProx=_pending.filter(r=>{const d=_diff(r.fecha_vence);return d>0&&d<=3;});
+  const alertVenc=_pending.filter(r=>_diff(r.fecha_vence)<0);
+  const alertDMap=new Map(_pending.map(r=>[r.id,_diff(r.fecha_vence)]));
+
+  // ── KPI cards (fila superior) ─────────────────────────────────
+  const kpis=[
+    {l:'Capital prestado', v:fmt(totPres),   sub:nLoans+' préstamos ('+nActivos+' activos)',  bg:'#1B4F45',tc:'#fff',   sc:'rgba(255,255,255,.55)'},
+    {l:'Total cobrado',    v:fmt(totCob),     sub:nPag+' cuotas pagadas',                      bg:'#2d8a7a',tc:'#fff',   sc:'rgba(255,255,255,.55)'},
+    {l:'Por cobrar',       v:fmt(porCobrar),  sub:nPend+' cuotas pendientes',                  bg:'#e8f0e8',tc:'#1B4F45',sc:'#5a7a5a'},
+    {l:'Monto vencido',    v:fmt(montoVenc),  sub:nVenc+' cuotas / '+pctVenc+'% del capital',  bg:'#fde8e8',tc:'#b52a2a',sc:'#c97070'},
+    {l:'Interés cobrado',  v:fmt(totInt),     sub:'ganancia generada',                         bg:'#e4f4f0',tc:'#1B6B5A',sc:'#5a8a80'},
+    {l:'Mora acumulada',   v:fmt(totMora),    sub:'mora cobrada',                              bg:'#fff5e6',tc:'#a0620a',sc:'#c09050'},
+  ];
 
   return(
     <div style={{animation:'fadeIn .3s ease'}}>
-      
-      {/* PAGE TITLE */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:8}}>
+
+      {/* HEADER */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14,flexWrap:'wrap',gap:8}}>
         <div>
           <div className="pg-ey">Panel de control</div>
           <div className="pg-ti">Dashboard <span style={{color:T,fontWeight:400}}>Financiero</span></div>
@@ -932,168 +961,194 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
         </div>
       </div>
 
-      {/* ══ ALERTAS DE COBRO ══ */}
+      {/* ── ALERTAS ─────────────────────────────────────────────── */}
       {(alertHoy.length>0||alertProx.length>0||alertVenc.length>0)&&(
-        <div style={{marginBottom:14,display:'grid',gap:8}}>
-
+        <div style={{marginBottom:12,display:'grid',gap:7}}>
           {alertHoy.length>0&&(
             <div style={{background:'#fff3f3',border:'1.5px solid #e53935',borderRadius:10,overflow:'hidden'}}>
-              <div style={{background:'#e53935',padding:'9px 16px',display:'flex',alignItems:'center',gap:9}}>
-                <span style={{fontSize:16}}>🔴</span>
-                <span style={{fontWeight:700,color:'#fff',fontSize:13.5}}>VENCE HOY — Cobrar ahora ({alertHoy.length})</span>
+              <div style={{background:'#e53935',padding:'8px 14px',display:'flex',alignItems:'center',gap:9}}>
+                <span>🔴</span>
+                <span style={{fontWeight:700,color:'#fff',fontSize:13}}>VENCE HOY — Cobrar ahora ({alertHoy.length})</span>
               </div>
-              <div style={{padding:'8px 10px',display:'grid',gap:6}}>
+              <div style={{padding:'7px 9px',display:'grid',gap:5}}>
                 {alertHoy.slice(0,5).map((r,i)=>(
-                  <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#fff',borderRadius:7,padding:'9px 12px',border:'1px solid #f5c5c5',flexWrap:'wrap'}}>
+                  <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#fff',borderRadius:7,padding:'8px 11px',border:'1px solid #f5c5c5',flexWrap:'wrap'}}>
                     <div style={{display:'flex',alignItems:'center',gap:7,flex:1,minWidth:0}}>
-                      <span style={{background:'#e53935',color:'#fff',borderRadius:5,padding:'2px 7px',fontSize:10.5,fontWeight:700,whiteSpace:'nowrap'}}>#{r.prestamo_id}</span>
-                      <span style={{fontWeight:700,color:'#222',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(loans.find(x=>Number(x.id)===Number(r.prestamo_id))||{}).cliente||r.cliente}</span>
-                      <span style={{color:'#888',fontSize:11,whiteSpace:'nowrap'}}>Cuota {r.n_cuota}</span>
+                      <span style={{background:'#e53935',color:'#fff',borderRadius:5,padding:'2px 7px',fontSize:10,fontWeight:700,whiteSpace:'nowrap'}}>#{r.prestamo_id}</span>
+                      <span style={{fontWeight:700,color:'#222',fontSize:12.5,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(loans.find(x=>Number(x.id)===Number(r.prestamo_id))||{}).cliente||r.cliente}</span>
+                      <span style={{color:'#888',fontSize:11}}>Cuota {r.n_cuota}</span>
                     </div>
-                    <div style={{display:'flex',alignItems:'center',gap:9}}>
-                      <span style={{fontWeight:700,color:'#e53935',fontSize:14}}>{fmt(getSaldo(r))}</span>
-                      <button className="btn btn-sm" style={{background:'#e53935',border:'none',padding:'6px 13px',fontSize:12}} onClick={()=>{setPayingRow(r);goTo('payments');}}>Cobrar</button>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{fontWeight:700,color:'#e53935',fontSize:13}}>{fmt(getSaldo(r))}</span>
+                      <button className="btn btn-sm" style={{background:'#e53935',border:'none',padding:'5px 12px',fontSize:12}} onClick={()=>{setPayingRow(r);goTo('payments');}}>Cobrar</button>
                     </div>
                   </div>
                 ))}
-                {alertHoy.length>5&&<div style={{textAlign:'center',fontSize:12,color:'#c0392b',fontWeight:600,padding:'3px 0'}}>+ {alertHoy.length-5} más que vencen hoy</div>}
+                {alertHoy.length>5&&<div style={{textAlign:'center',fontSize:12,color:'#c0392b',fontWeight:600}}>+{alertHoy.length-5} más</div>}
               </div>
             </div>
           )}
-
           {alertProx.length>0&&(
             <div style={{background:'#fffbf0',border:'1.5px solid #f59e0b',borderRadius:10,overflow:'hidden'}}>
-              <div style={{background:'#f59e0b',padding:'9px 16px',display:'flex',alignItems:'center',gap:9}}>
-                <span style={{fontSize:16}}>🟡</span>
-                <span style={{fontWeight:700,color:'#fff',fontSize:13.5}}>PRÓXIMOS 3 DÍAS — Preparar cobro ({alertProx.length})</span>
+              <div style={{background:'#f59e0b',padding:'8px 14px',display:'flex',alignItems:'center',gap:9}}>
+                <span>🟡</span>
+                <span style={{fontWeight:700,color:'#fff',fontSize:13}}>PRÓXIMOS 3 DÍAS ({alertProx.length})</span>
               </div>
-              <div style={{padding:'8px 10px',display:'grid',gap:6}}>
+              <div style={{padding:'7px 9px',display:'grid',gap:5}}>
                 {alertProx.slice(0,4).map((r,i)=>(
-                  <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#fff',borderRadius:7,padding:'9px 12px',border:'1px solid #fde68a',flexWrap:'wrap'}}>
+                  <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#fff',borderRadius:7,padding:'8px 11px',border:'1px solid #fde68a',flexWrap:'wrap'}}>
                     <div style={{display:'flex',alignItems:'center',gap:7,flex:1,minWidth:0}}>
-                      <span style={{background:'#f59e0b',color:'#fff',borderRadius:5,padding:'2px 7px',fontSize:10.5,fontWeight:700,whiteSpace:'nowrap'}}>#{r.prestamo_id}</span>
-                      <span style={{fontWeight:700,color:'#222',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(loans.find(x=>Number(x.id)===Number(r.prestamo_id))||{}).cliente||r.cliente}</span>
-                      <span style={{color:'#888',fontSize:11,whiteSpace:'nowrap'}}>Cuota {r.n_cuota}</span>
+                      <span style={{background:'#f59e0b',color:'#fff',borderRadius:5,padding:'2px 7px',fontSize:10,fontWeight:700}}>#{r.prestamo_id}</span>
+                      <span style={{fontWeight:700,color:'#222',fontSize:12.5}}>{(loans.find(x=>Number(x.id)===Number(r.prestamo_id))||{}).cliente||r.cliente}</span>
                     </div>
-                    <div style={{display:'flex',alignItems:'center',gap:9}}>
-                      <span style={{fontSize:11,color:'#92400e',fontWeight:700,background:'#fef3c7',borderRadius:5,padding:'3px 9px'}}>en {alertDiffMap.get(r.id)} día{alertDiffMap.get(r.id)>1?'s':''}</span>
-                      <span style={{fontWeight:700,color:'#92400e',fontSize:14}}>{fmt(getSaldo(r))}</span>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{fontSize:11,color:'#92400e',fontWeight:700,background:'#fef3c7',borderRadius:5,padding:'3px 8px'}}>en {alertDMap.get(r.id)}d.</span>
+                      <span style={{fontWeight:700,color:'#92400e',fontSize:13}}>{fmt(getSaldo(r))}</span>
                     </div>
                   </div>
                 ))}
-                {alertProx.length>4&&<div style={{textAlign:'center',fontSize:12,color:'#92400e',fontWeight:600,padding:'3px 0'}}>+ {alertProx.length-4} más en los próximos 3 días</div>}
+                {alertProx.length>4&&<div style={{textAlign:'center',fontSize:12,color:'#92400e',fontWeight:600}}>+{alertProx.length-4} más</div>}
               </div>
             </div>
           )}
-
           {alertVenc.length>0&&(
             <div style={{background:'#1e1e1e',border:'1.5px solid #444',borderRadius:10,overflow:'hidden'}}>
-              <div style={{background:'#1e1e1e',padding:'9px 16px',display:'flex',alignItems:'center',gap:9,flexWrap:'wrap'}}>
-                <span style={{fontSize:16}}>⚫</span>
-                <span style={{fontWeight:700,color:'#ff6b6b',fontSize:13.5}}>VENCIDAS — En mora ({alertVenc.length})</span>
-                <span style={{marginLeft:'auto',fontSize:12,color:'rgba(255,120,120,.75)',fontWeight:600}}>Total: {fmt(alertVenc.reduce((a,r)=>a+getSaldo(r),0))}</span>
+              <div style={{background:'#1e1e1e',padding:'8px 14px',display:'flex',alignItems:'center',gap:9,flexWrap:'wrap'}}>
+                <span>⚫</span>
+                <span style={{fontWeight:700,color:'#ff6b6b',fontSize:13}}>EN MORA ({alertVenc.length})</span>
+                <span style={{marginLeft:'auto',fontSize:12,color:'rgba(255,120,120,.75)',fontWeight:600}}>{fmt(alertVenc.reduce((a,r)=>a+getSaldo(r),0))}</span>
               </div>
-              <div style={{padding:'8px 10px',display:'grid',gap:6}}>
+              <div style={{padding:'7px 9px',display:'grid',gap:5}}>
                 {alertVenc.slice(0,5).map((r,i)=>(
-                  <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#2a2a2a',borderRadius:7,padding:'9px 12px',border:'1px solid #444',flexWrap:'wrap'}}>
+                  <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#2a2a2a',borderRadius:7,padding:'8px 11px',border:'1px solid #444',flexWrap:'wrap'}}>
                     <div style={{display:'flex',alignItems:'center',gap:7,flex:1,minWidth:0}}>
-                      <span style={{background:'#3a3a3a',color:'#ff8a80',borderRadius:5,padding:'2px 7px',fontSize:10.5,fontWeight:700,whiteSpace:'nowrap'}}>#{r.prestamo_id}</span>
-                      <span style={{fontWeight:700,color:'#fff',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(loans.find(x=>Number(x.id)===Number(r.prestamo_id))||{}).cliente||r.cliente}</span>
-                      <span style={{color:'#aaa',fontSize:11,whiteSpace:'nowrap'}}>Cuota {r.n_cuota}</span>
+                      <span style={{background:'#3a3a3a',color:'#ff8a80',borderRadius:5,padding:'2px 7px',fontSize:10,fontWeight:700}}>#{r.prestamo_id}</span>
+                      <span style={{fontWeight:700,color:'#fff',fontSize:12.5}}>{(loans.find(x=>Number(x.id)===Number(r.prestamo_id))||{}).cliente||r.cliente}</span>
+                      <span style={{color:'#aaa',fontSize:11}}>C.{r.n_cuota}</span>
                     </div>
-                    <div style={{display:'flex',alignItems:'center',gap:9}}>
-                      <span style={{fontSize:11,color:'#ff8a80',fontWeight:700,background:'rgba(255,100,100,.15)',borderRadius:5,padding:'3px 9px'}}>{Math.abs(alertDiffMap.get(r.id))} d. atrás</span>
-                      <span style={{fontWeight:700,color:'#ff6b6b',fontSize:14}}>{fmt(getSaldo(r))}</span>
-                      <button className="btn btn-sm" style={{background:'#333',border:'1px solid #555',color:'#ff8a80',padding:'6px 13px',fontSize:12}} onClick={()=>{setPayingRow(r);goTo('payments');}}>Cobrar</button>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{fontSize:11,color:'#ff8a80',fontWeight:700,background:'rgba(255,100,100,.15)',borderRadius:5,padding:'3px 8px'}}>{Math.abs(alertDMap.get(r.id))}d. atrás</span>
+                      <span style={{fontWeight:700,color:'#ff6b6b',fontSize:13}}>{fmt(getSaldo(r))}</span>
+                      <button className="btn btn-sm" style={{background:'#333',border:'1px solid #555',color:'#ff8a80',padding:'5px 12px',fontSize:11}} onClick={()=>{setPayingRow(r);goTo('payments');}}>Cobrar</button>
                     </div>
                   </div>
                 ))}
-                {alertVenc.length>5&&<div style={{textAlign:'center',fontSize:12,color:'#ff8a80',fontWeight:600,padding:'3px 0'}}>+ {alertVenc.length-5} más en mora</div>}
+                {alertVenc.length>5&&<div style={{textAlign:'center',fontSize:12,color:'#ff8a80',fontWeight:600}}>+{alertVenc.length-5} más</div>}
               </div>
             </div>
           )}
-
         </div>
       )}
 
-      {/* KPI STRIP */}
-      <div className='kpi-grid' style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:10,marginBottom:14}}>
+      {/* ── KPI STRIP ────────────────────────────────────────────── */}
+      <div className='kpi-grid' style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:9,marginBottom:12}}>
         {kpis.map((k,i)=>(
-          <div key={i} style={{background:k.bg,borderRadius:6,padding:'14px 16px',border:'1px solid rgba(0,0,0,.06)'}}>
-            <div style={{fontSize:9.5,fontWeight:700,color:k.sc,textTransform:'uppercase',letterSpacing:'.09em',marginBottom:6}}>{k.l}</div>
-            <div style={{fontSize:19,fontWeight:700,color:k.tc,letterSpacing:'-.02em',lineHeight:1,marginBottom:4}}>{k.v}</div>
-            <div style={{fontSize:10.5,color:k.sc}}>{k.sub}</div>
+          <div key={i} style={{background:k.bg,borderRadius:6,padding:'13px 15px',border:'1px solid rgba(0,0,0,.06)'}}>
+            <div style={{fontSize:9,fontWeight:700,color:k.sc,textTransform:'uppercase',letterSpacing:'.09em',marginBottom:5}}>{k.l}</div>
+            <div style={{fontSize:18,fontWeight:700,color:k.tc,letterSpacing:'-.02em',lineHeight:1,marginBottom:4}}>{k.v}</div>
+            <div style={{fontSize:10,color:k.sc}}>{k.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* CHARTS ROW */}
-      <div className='dash-row-2' className='dash-row-2' style={{display:'grid',gridTemplateColumns:'1.6fr 1fr',gap:12,marginBottom:12}}>
+      {/* ── FILA 1: Tendencia + Resumen capital ──────────────────── */}
+      <div style={{display:'grid',gridTemplateColumns:'1.6fr 1fr',gap:11,marginBottom:11}} className="dash-row-2">
 
-        {/* TENDENCIA DE COBROS */}
+        {/* TENDENCIA */}
         <div className="card">
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'13px 18px 0'}}>
-            <div style={{fontWeight:700,fontSize:13.5,color:'var(--ink)'}}>Tendencia de cobros</div>
-            <div style={{display:'flex',gap:14,fontSize:11}}>
-              <span style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:10,height:10,borderRadius:2,background:T2,display:'inline-block'}}/> Cobrado</span>
-              <span style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:10,height:10,borderRadius:2,background:D,opacity:.35,display:'inline-block'}}/> Prestado</span>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 17px 0'}}>
+            <div style={{fontWeight:700,fontSize:13,color:'var(--ink)'}}>Tendencia de cobros — últimos 7 meses</div>
+            <div style={{display:'flex',gap:12,fontSize:10.5}}>
+              <span style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:9,height:9,borderRadius:2,background:T2,display:'inline-block'}}/> Cobrado</span>
+              <span style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:9,height:9,borderRadius:2,background:D,opacity:.3,display:'inline-block'}}/> Prestado</span>
             </div>
           </div>
-          <div style={{padding:'10px 18px 14px'}}>
-            <svg viewBox={`0 0 ${W} ${H+20}`} style={{width:'100%',height:120}}>
+          <div style={{padding:'9px 17px 13px'}}>
+            <svg viewBox={`0 0 ${W} ${H+20}`} style={{width:'100%',height:115}}>
               <defs>
                 <linearGradient id="areGrad" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor={T2} stopOpacity="0.25"/>
+                  <stop offset="0%" stopColor={T2} stopOpacity="0.22"/>
                   <stop offset="100%" stopColor={T2} stopOpacity="0.02"/>
                 </linearGradient>
               </defs>
-              {/* Grid lines */}
               {[0,1,2,3].map(i=>(
-                <line key={i} x1={pad} x2={W-pad} y1={pad+(i/3)*(H-pad*2)}
-                  stroke="#e8f0e8" strokeWidth="1"/>
+                <line key={i} x1={pad} x2={W-pad} y1={pad+(i/3)*(H-pad*2)} stroke="#e8f0e8" strokeWidth="1"/>
               ))}
-              {/* Prestado bars */}
               {meses.map((m,i)=>{
-                const bw=28;
+                const bw=26;
                 const x=pad+(meses.length>1?i/(meses.length-1):0.5)*(W-pad*2)-bw/2;
                 const h=maxM>0?(m.pre/maxM)*(H-pad*2):0;
-                return<rect key={i} x={x} y={H-pad-h} width={bw} height={h} rx="2" fill={D} opacity="0.18"/>;
+                return<rect key={i} x={x} y={H-pad-h} width={bw} height={h} rx="2" fill={D} opacity="0.16"/>;
               })}
-              {/* Cobrado area */}
               <path d={area} fill="url(#areGrad)"/>
-              {/* Cobrado line */}
               <polyline points={polyline} fill="none" stroke={T2} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"/>
-              {/* Dots */}
               {pts.map(([x,y],i)=>(
                 <circle key={i} cx={x} cy={y} r="3.5" fill="#fff" stroke={T2} strokeWidth="2"/>
               ))}
-              {/* X labels */}
               {meses.map((m,i)=>{
-                const x=pad+(i/(meses.length-1))*(W-pad*2);
+                const x=pad+(i/divisor)*(W-pad*2);
                 return<text key={i} x={x} y={H+14} textAnchor="middle" fontSize="9" fill="var(--grey)">{m.lbl}</text>;
               })}
             </svg>
           </div>
         </div>
 
+        {/* RESUMEN CAPITAL — mueve donuts a aquí */}
+        <div className="card">
+          <div style={{padding:'12px 17px 10px',fontWeight:700,fontSize:13,color:'var(--ink)'}}>Flujo de capital</div>
+          <div style={{padding:'0 17px 13px'}}>
+            {/* Barra principal */}
+            {[
+              {l:'Recuperado',v:totCapRec,   pct:pctRec,  c:T,         bg:'#2d8a7a22'},
+              {l:'En calle',  v:capEnCalle,  pct:pctCalle,c:'#a0620a', bg:'#a0620a18'},
+              {l:'Vencido',   v:montoVenc,   pct:pctVenc, c:'#b52a2a', bg:'#b52a2a18'},
+            ].map(row=>(
+              <div key={row.l} style={{marginBottom:11}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,fontSize:12}}>
+                  <span style={{display:'flex',alignItems:'center',gap:6}}>
+                    <span style={{width:8,height:8,borderRadius:1,background:row.c,display:'inline-block'}}/>
+                    <span style={{color:'#555'}}>{row.l}</span>
+                  </span>
+                  <span style={{fontWeight:700,color:row.c}}>{fmt(row.v)} <span style={{color:'#aaa',fontWeight:400,fontSize:10.5}}>({row.pct}%)</span></span>
+                </div>
+                <div style={{background:'#eef3ee',borderRadius:3,height:6}}>
+                  <div style={{background:row.c,borderRadius:3,height:6,width:row.pct+'%',transition:'width .5s ease'}}/>
+                </div>
+              </div>
+            ))}
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:10,marginTop:2}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--grey)',marginBottom:4}}>
+                <span>Total prestado</span><span style={{fontWeight:700,color:D}}>{fmt(totPres)}</span>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--grey)'}}>
+                <span>Retorno s/capital</span><span style={{fontWeight:700,color:T2}}>{totPres>0?Math.round(totInt/totPres*100):0}% interés</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── FILA 2: Estado cuotas + Balance negocio ──────────────── */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1.4fr',gap:11,marginBottom:11}} className="dash-row-2">
+
         {/* ESTADO CUOTAS */}
         <div className="card">
-          <div style={{padding:'13px 18px 0',fontWeight:700,fontSize:13.5,color:'var(--ink)',marginBottom:10}}>Estado de cuotas</div>
-          <div style={{padding:'0 18px 14px',display:'flex',gap:16,alignItems:'center'}}>
+          <div style={{padding:'12px 17px 10px',fontWeight:700,fontSize:13,color:'var(--ink)'}}>Estado de cuotas</div>
+          <div style={{padding:'0 17px 13px',display:'flex',gap:15,alignItems:'center'}}>
             <Donut segs={[{v:nPag,c:T},{v:nPend,c:'#2356a0'},{v:nVenc,c:'#b52a2a'}]} total={total} cv={sched.length} cl="cuotas"/>
-            <div style={{flex:1,display:'grid',gap:10}}>
+            <div style={{flex:1,display:'grid',gap:9}}>
               {[
-                {l:'Pagadas',   n:nPag,  c:T,         pct:total>0?Math.round(nPag/total*100):0},
-                {l:'Pendientes',n:nPend, c:'#2356a0',  pct:total>0?Math.round(nPend/total*100):0},
-                {l:'Vencidas',  n:nVenc, c:'#b52a2a',  pct:total>0?Math.round(nVenc/total*100):0},
+                {l:'Pagadas',    n:nPag,  c:T,          pct:total>0?Math.round(nPag/total*100):0},
+                {l:'Pendientes', n:nPend, c:'#2356a0',  pct:total>0?Math.round(nPend/total*100):0},
+                {l:'Vencidas',   n:nVenc, c:'#b52a2a',  pct:total>0?Math.round(nVenc/total*100):0},
               ].map(i=>(
                 <div key={i.l}>
-                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:3,fontSize:12}}>
+                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:3,fontSize:11.5}}>
                     <span style={{color:i.c,fontWeight:600,display:'flex',alignItems:'center',gap:5}}>
-                      <span style={{width:8,height:8,background:i.c,display:'inline-block',borderRadius:1}}/>
+                      <span style={{width:7,height:7,background:i.c,display:'inline-block',borderRadius:1}}/>
                       {i.l}
                     </span>
-                    <span style={{fontWeight:700,color:'var(--ink)'}}>{i.n} <span style={{color:'var(--grey)',fontWeight:400,fontSize:11}}>({i.pct}%)</span></span>
+                    <span style={{fontWeight:700,color:'var(--ink)'}}>{i.n} <span style={{color:'var(--grey)',fontWeight:400,fontSize:10}}>({i.pct}%)</span></span>
                   </div>
                   <div style={{background:'#eef3ee',borderRadius:2,height:5}}>
                     <div style={{background:i.c,borderRadius:2,height:5,width:i.pct+'%',transition:'width .4s ease'}}/>
@@ -1103,78 +1158,50 @@ function Dashboard({loans,sched,goTo,setPayingRow}){
             </div>
           </div>
         </div>
-      </div>
 
-      {/* SECOND ROW */}
-      <div className='dash-row-2' className='dash-row-2' style={{display:'grid',gridTemplateColumns:'1fr 1.4fr',gap:12,marginBottom:12}}>
-
-        {/* TOP CLIENTES */}
+        {/* BALANCE DEL NEGOCIO — solo porcentajes, los montos ya están arriba */}
         <div className="card">
-          <div style={{padding:'13px 18px 10px',fontWeight:700,fontSize:13.5,color:'var(--ink)'}}>Top clientes — capital</div>
-          <div style={{padding:'0 18px 14px',display:'grid',gap:8}}>
-            {topClients.length===0&&<div style={{color:'var(--grey)',fontSize:13,padding:'8px 0'}}>Sin datos</div>}
-            {topClients.map(([cli,monto],i)=>{
-              const pct=Math.round(monto/maxCli*100);
-              const colors=[T,T2,'#56b0a0','#7ecabc'];
-              return(
-                <div key={cli}>
-                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,fontSize:12}}>
-                    <span style={{display:'flex',alignItems:'center',gap:7}}>
-                      <span style={{width:8,height:8,borderRadius:1,background:colors[i],display:'inline-block'}}/>
-                      <span style={{color:'var(--ink)',fontWeight:500}}>{cli}</span>
-                    </span>
-                    <span style={{fontWeight:700,color:D}}>{fmt(monto)}</span>
-                  </div>
-                  <div style={{background:'#eef3ee',borderRadius:2,height:6}}>
-                    <div style={{background:colors[i],borderRadius:2,height:6,width:pct+'%',transition:'width .5s ease'}}/>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div style={{borderTop:'1px solid var(--border)',padding:'10px 18px',display:'flex',justifyContent:'space-between',fontSize:12,color:'var(--grey)'}}>
-            <span>Total capital prestado</span>
-            <span style={{fontWeight:700,color:D}}>{fmt(totPres)}</span>
-          </div>
-        </div>
-
-        {/* BALANCE */}
-        <div className="card">
-          <div style={{padding:'13px 18px 10px',fontWeight:700,fontSize:13.5,color:'var(--ink)'}}>Balance del negocio</div>
-          <div style={{padding:'0 18px 14px',display:'grid',gap:1}}>
+          <div style={{padding:'12px 17px 8px',fontWeight:700,fontSize:13,color:'var(--ink)'}}>Balance del negocio <span style={{fontSize:11,color:'var(--grey)',fontWeight:400}}>— % sobre capital prestado</span></div>
+          <div style={{padding:'0 17px 13px',display:'grid',gap:0}}>
             {[
-              {l:'Capital prestado',    c:D,           v:totPres},
-              {l:'Capital recuperado',  c:T,           v:totCapRecuperado},
-              {l:'Capital en calle',    c:'#a0620a',   v:Math.max(0,loans.filter(l=>getEstPrestamo(sched.filter(r=>r.prestamo_id===l.id))!=='CANCELADO').reduce((a,l)=>a+N(l.monto),0)-totCapRecuperado)},
-              {l:'Interés cobrado',     c:T2,          v:totInt},
-              {l:'Mora cobrada',        c:'#b52a2a',   v:totMora},
-            ].map((row,i)=>{
-              const pct=totPres>0?Math.min(100,Math.round(row.v/totPres*100)):0;
-              return(
-                <div key={row.l} style={{display:'grid',gridTemplateColumns:'1fr auto',gap:10,alignItems:'center',padding:'7px 0',borderBottom:i<4?'1px solid var(--border)':'none'}}>
-                  <div>
-                    <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:4,fontSize:12.5}}>
-                      <span style={{width:8,height:8,borderRadius:1,background:row.c,display:'inline-block'}}/>
-                      <span style={{color:'#555'}}>{row.l}</span>
-                    </div>
-                    <div style={{background:'#eef3ee',borderRadius:2,height:5}}>
-                      <div style={{background:row.c,borderRadius:2,height:5,width:pct+'%',opacity:.7}}/>
-                    </div>
+              {l:'Capital prestado',    c:D,          pct:100,                                          v:totPres,   nota:'base'},
+              {l:'Capital recuperado',  c:T,          pct:pctRec,                                       v:totCapRec, nota:nCancelados+' cancelados + activos parciales'},
+              {l:'Capital en calle',    c:'#a0620a',  pct:pctCalle,                                     v:capEnCalle,nota:'aún por recuperar'},
+              {l:'Interés cobrado',     c:T2,         pct:totPres>0?Math.round(totInt/totPres*100):0,   v:totInt,    nota:'sobre capital prestado'},
+              {l:'Mora cobrada',        c:'#b52a2a',  pct:totPres>0?Math.round(totMora/totPres*100):0,  v:totMora,   nota:'sobre capital prestado'},
+            ].map((row,i)=>(
+              <div key={row.l} style={{display:'grid',gridTemplateColumns:'1fr auto',gap:8,alignItems:'center',padding:'6px 0',borderBottom:i<4?'1px solid var(--border)':'none'}}>
+                <div>
+                  <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,fontSize:12}}>
+                    <span style={{width:7,height:7,borderRadius:1,background:row.c,display:'inline-block',flexShrink:0}}/>
+                    <span style={{color:'#444',fontWeight:600}}>{row.l}</span>
+                    <span style={{fontSize:10,color:'#bbb',marginLeft:2}}>{row.nota}</span>
                   </div>
-                  <div style={{fontWeight:700,color:row.c,fontSize:13,whiteSpace:'nowrap'}}>{fmt(row.v)}</div>
+                  <div style={{background:'#eef3ee',borderRadius:2,height:5}}>
+                    <div style={{background:row.c,borderRadius:2,height:5,width:Math.min(100,row.pct)+'%',opacity:.75,transition:'width .5s'}}/>
+                  </div>
                 </div>
-              );
-            })}
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontWeight:700,color:row.c,fontSize:13,whiteSpace:'nowrap'}}>{row.pct}%</div>
+                  <div style={{fontSize:10,color:'#aaa',whiteSpace:'nowrap'}}>{fmt(row.v)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Verificación rápida */}
+          <div style={{padding:'8px 17px',borderTop:'1px solid var(--border)',background:'var(--alt)',display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:11.5,borderRadius:'0 0 6px 6px'}}>
+            <span style={{color:'var(--grey)'}}>✓ Capital recuperado + en calle</span>
+            <span style={{fontWeight:700,color:Math.abs(totCapRec+capEnCalle-totPres)<2?T:'#b52a2a'}}>
+              {Math.abs(totCapRec+capEnCalle-totPres)<2?'= Capital prestado ✅':'⚠ revisar'}
+            </span>
           </div>
         </div>
       </div>
-
-
-
 
     </div>
   );
 }
+
 
 function NuevoPrestamo({onCreate}){
   const[f,setF]=useState({
@@ -2267,38 +2294,28 @@ function Auditoria({loans,sched}){
     return{est,expected,bd,diff,cuotas};
   }
 
-  // ── KPIs globales ──────────────────────────────────────────
+  // ── KPIs globales — misma fórmula que Dashboard ──────────────
   const totPrestado=loans.reduce((a,l)=>a+N(l.monto),0);
-  // Capital recuperado: cuotas Pagado/Adelantado + capital cubierto por cancelaciones
-  // Para cancelados: todo el capital está recuperado
-  const canceladosIds=new Set(loans.filter(l=>getEstPrestamo(sched.filter(r=>Number(r.prestamo_id)===Number(l.id)))==='CANCELADO').map(l=>l.id));
-  const capCancelados=loans.filter(l=>canceladosIds.has(l.id)).reduce((a,l)=>a+N(l.monto),0);
-  const cuotasPagadas=sched.filter(r=>['Pagado','Adelantado'].includes(getEst(r))&&!canceladosIds.has(Number(r.prestamo_id)));
-  const capActivosPagado=cuotasPagadas.reduce((a,r)=>a+N(r.capital_cuota),0);
-  const totCapRecuperado=capCancelados+capActivosPagado;
-
+  const {total:totCapRecuperado,capCanc:capCancelados,capActivo:capActivosPagado,cancelSet:canceladosIds}=calcCapRecuperado(loans,sched);
   const cuotasConPago=sched.filter(r=>N(r.monto_pagado)>0);
   const totBD=cuotasConPago.reduce((a,r)=>a+N(r.monto_pagado),0);
   const totMoraCobrada=sched.filter(r=>N(r.mora)>0).reduce((a,r)=>a+N(r.mora),0);
+  const capitalEnCalle=Math.max(0,totPrestado-totCapRecuperado);
 
-  // ── Análisis por préstamo ──────────────────────────────────
+    // ── Análisis por préstamo ──────────────────────────────────
   const analisis=loans.map(l=>({l,...calcLoan(l)}));
-  const conError=analisis.filter(x=>Math.abs(x.diff)>=1);// tolerancia S/1 por redondeos
-  const totExpected=analisis.reduce((a,x)=>a+x.expected,0);
+  const conError=analisis.filter(x=>Math.abs(x.diff)>=1);
   const cuadra=conError.length===0;
 
-  // Capital en calle
-  const capitalEnCalle=loans
-    .filter(l=>!canceladosIds.has(l.id))
-    .reduce((a,l)=>a+N(l.monto),0)-capActivosPagado;
-
   const kpis=[
-    {l:'Capital prestado',    v:fmt(totPrestado),          c:D,           bg:'var(--light)'},
-    {l:'Capital recuperado',  v:fmt(totCapRecuperado),     c:T,           bg:'#e4f4f0'},
-    {l:'Capital en calle',    v:fmt(Math.max(0,capitalEnCalle)),c:'#a0620a',bg:'#fef3e2'},
-    {l:'Total cobrado (BD)',  v:fmt(totBD),                c:cuadra?T:'#b52a2a',bg:cuadra?'#dff2e8':'#fde8e8'},
-    {l:'Mora cobrada',        v:fmt(totMoraCobrada),       c:'#b52a2a',   bg:'#fde8e8'},
-    {l:'Préstamos c/error',   v:conError.length+' préstamos',c:cuadra?T:'#b52a2a',bg:cuadra?'#dff2e8':'#fde8e8'},
+    {l:'Capital prestado',            v:fmt(totPrestado),     c:D,           bg:'var(--light)'},
+    {l:'Cap. recup. — cancelados',    v:fmt(capCancelados),   c:T,           bg:'#e4f4f0'},
+    {l:'Cap. recup. — activos parc.', v:fmt(capActivosPagado),c:'#2356a0',  bg:'#e8f0fb'},
+    {l:'Capital recuperado TOTAL',    v:fmt(totCapRecuperado),c:T,           bg:'#dff2e8'},
+    {l:'Capital en calle',            v:fmt(capitalEnCalle),  c:'#a0620a',   bg:'#fef3e2'},
+    {l:'Total cobrado (BD)',          v:fmt(totBD),            c:cuadra?T:'#b52a2a',bg:cuadra?'#dff2e8':'#fde8e8'},
+    {l:'Mora cobrada',                v:fmt(totMoraCobrada),  c:'#b52a2a',   bg:'#fde8e8'},
+    {l:'Préstamos c/error',           v:conError.length+' préstamos',c:cuadra?T:'#b52a2a',bg:cuadra?'#dff2e8':'#fde8e8'},
   ];
 
   return(
@@ -2429,10 +2446,11 @@ function ExportarExcel({loans,sched}){
 
     // ─ HOJA 1: PRÉSTAMOS ─────────────────────────────────────────
     const rows=loans.map(l=>{
-      const cuotas=sched.filter(r=>r.prestamo_id===l.id);
+      const cuotas=sched.filter(r=>Number(r.prestamo_id)===Number(l.id));
       const est=getEstPrestamo(cuotas);
       const cobrado=cuotas.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
-      const saldo=cuotas.reduce((a,r)=>a+getSaldo(r),0);
+      // Para cancelados: saldo=0 siempre (capital 100% recuperado)
+      const saldo=est==='CANCELADO'?0:cuotas.reduce((a,r)=>a+getSaldo(r),0);
       const mora=cuotas.reduce((a,r)=>a+N(r.mora||0),0);
       return[l.id,l.cliente,l.garante||'',l.referencia||'',l.cliente_externo||'NO',
         N(l.monto),parseFloat((N(l.tasa)*100).toFixed(2)),l.tipo,l.cuotas,
