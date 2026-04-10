@@ -2439,418 +2439,241 @@ function Auditoria({loans,sched}){
 function ExportarExcel({loans,sched}){
   const D='#1B4F45'; const T='#2d8a7a'; const T2='#379F8B';
 
-  // ── Cálculos con fuente única ────────────────────────────────
+  // ── Cálculos (fuente única, sin repetir lo del Dashboard) ─────
   const {total:totCapRec, cancelSet} = calcCapRecuperado(loans, sched);
-
-  // Por estado (categorías completas)
-  const byEst = loans.reduce((acc,l)=>{
-    const est = getEstPrestamo(sched.filter(r=>Number(r.prestamo_id)===Number(l.id)));
-    if(!acc[est]) acc[est]={n:0, monto:0, cobrado:0, porCobrar:0};
-    const cuotas = sched.filter(r=>Number(r.prestamo_id)===Number(l.id));
-    const cob = cuotas.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
-    const saldoL = est==='CANCELADO' ? 0 : cuotas.reduce((a,r)=>a+getSaldo(r),0);
-    acc[est].n++;
-    acc[est].monto += N(l.monto);
-    acc[est].cobrado += cob;
-    acc[est].porCobrar += saldoL;
-    return acc;
-  }, {});
-
   const totPres   = loans.reduce((a,l)=>a+N(l.monto),0);
   const totCob    = sched.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
   const totInt    = sched.filter(r=>N(r.monto_pagado)>0).reduce((a,r)=>a+N(r.interes_cuota),0);
   const totMora   = sched.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.mora||0),0);
+  const porCobrar = sched.filter(r=>!['Pagado','Adelantado'].includes(getEst(r))&&!cancelSet.has(Number(r.prestamo_id))).reduce((a,r)=>a+getSaldo(r),0);
   const capEnCalle= Math.max(0, totPres - totCapRec);
-  const porCobrar = sched.filter(r=>
-    !['Pagado','Adelantado'].includes(getEst(r)) && !cancelSet.has(Number(r.prestamo_id))
-  ).reduce((a,r)=>a+getSaldo(r),0);
 
-  const nCancel   = (byEst['CANCELADO']?.n)||0;
-  const nActEnCur = ((byEst['ACTIVO']?.n)||0)+((byEst['EN CURSO']?.n)||0);
-  const nVencido  = (byEst['VENCIDO']?.n)||0;
-  const nOtros    = loans.length - nCancel - nActEnCur - nVencido;
-
-  // ── Grupos para tabla de estado ──────────────────────────────
-  const estadoRows = [
-    {est:'ACTIVO',    label:'Activo',    c:'#1e6e3a', bg:'#dff2e8', border:'#7dbfa0', ...byEst['ACTIVO']||{}},
-    {est:'EN CURSO',  label:'En curso',  c:'#a0620a', bg:'#fef3e2', border:'#f0b97a', ...byEst['EN CURSO']||{}},
-    {est:'VENCIDO',   label:'Vencido',   c:'#b52a2a', bg:'#fde8e8', border:'#f5a5a5', ...byEst['VENCIDO']||{}},
-    {est:'CANCELADO', label:'Cancelado', c:'#555',    bg:'#f2f2f2', border:'#ccc',    ...byEst['CANCELADO']||{}},
-  ].filter(r=>(r.n||0)>0);
+  // Conteo por estado
+  const byEst = loans.reduce((acc,l)=>{
+    const est=getEstPrestamo(sched.filter(r=>Number(r.prestamo_id)===Number(l.id)));
+    acc[est]=(acc[est]||0)+1; return acc;
+  },{});
+  const nActivo   = (byEst['ACTIVO']||0)+(byEst['EN CURSO']||0);
+  const nVencido  = byEst['VENCIDO']||0;
+  const nCancelado= byEst['CANCELADO']||0;
 
   // ── EXCEL ─────────────────────────────────────────────────────
   function exportar(){
     if(!window.XLSX){alert('XLSX no disponible');return;}
-    const XL = window.XLSX;
-    const wb = XL.utils.book_new();
+    const XL=window.XLSX; const wb=XL.utils.book_new();
+    const W='FFFFFF'; const G='F4FAF8'; const VRD='1B4F45'; const TEA='2d8a7a'; const TEA2='379F8B';
+    const blanco=W; const verde=VRD; const teal=TEA;
+    const rojo='C0392B'; const naranja='E67E22'; const azul='2C3E7A'; const gris='F0F0F0';
 
-    const verde  = '1B4F45'; const teal = '2d8a7a'; const teal2 = '379F8B';
-    const blanco = 'FFFFFF'; const gris  = 'F5F5F5'; const gris2 = 'E8EBE8';
-    const rojo   = 'C0392B'; const naranja = 'E67E22'; const azul = '2C3E7A';
+    const hdr=(v,bg)=>({v,t:'s',s:{fill:{fgColor:{rgb:bg||verde}},font:{bold:true,color:{rgb:W},sz:10,name:'Calibri'},alignment:{horizontal:'center',vertical:'center'},border:{bottom:{style:'medium',color:{rgb:teal}}}}});
+    const num=(v,bg,fg,bold)=>({v:parseFloat((v||0).toFixed(2)),t:'n',s:{fill:{fgColor:{rgb:bg||W}},font:{bold:!!bold,color:{rgb:fg||'333333'},sz:10,name:'Calibri'},alignment:{horizontal:'right',vertical:'center'},border:{bottom:{style:'thin',color:{rgb:'E0E8E0'}},right:{style:'thin',color:{rgb:'EEEEEE'}}}}});
+    const txt=(v,bg,fg,bold,align)=>({v:v||'',t:'s',s:{fill:{fgColor:{rgb:bg||W}},font:{bold:!!bold,color:{rgb:fg||'333333'},sz:10,name:'Calibri'},alignment:{horizontal:align||'left',vertical:'center'},border:{bottom:{style:'thin',color:{rgb:'E0E8E0'}},right:{style:'thin',color:{rgb:'EEEEEE'}}}}});
 
-    // Helpers
-    const cell = (v, bold, bg, fg, align, sz, border) => ({
-      v, t: typeof v==='number'?'n':'s',
-      s: {
-        fill: { fgColor: { rgb: bg||blanco } },
-        font: { bold:!!bold, color:{ rgb:fg||'333333' }, sz:sz||10, name:'Calibri' },
-        alignment: { horizontal:align||'left', vertical:'center', wrapText:false },
-        border: border ? {
-          top:{style:'thin',color:{rgb:gris2}},
-          bottom:{style:'thin',color:{rgb:gris2}},
-          left:{style:'thin',color:{rgb:gris2}},
-          right:{style:'thin',color:{rgb:gris2}},
-        } : {
-          bottom:{style:'thin',color:{rgb:'E8ECE8'}},
-          right:{style:'thin',color:{rgb:'EEEEEE'}},
-        }
-      }
+    // ── HOJA 1: RESUMEN ───────────────────────────────────────
+    const res=[];
+    res.push([txt('CRÉDITO SAN JUAN — RESUMEN EJECUTIVO',verde,W,true,'center')]);
+    res.push([txt(new Date().toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'}),verde,'A8D8C0',false,'center')]);
+    res.push([txt('')]);
+    res.push([txt('CARTERA',teal,W,true)]);
+    res.push([txt('Estado',gris,'555',true),txt('Cantidad',gris,'555',true),txt('% del total',gris,'555',true)]);
+    [[`Activos + En curso`,nActivo],[`Vencidos`,nVencido],[`Cancelados`,nCancelado],[`TOTAL`,loans.length]].forEach(([l,v],i)=>{
+      const pct=Math.round(v/Math.max(1,loans.length)*100)+'%';
+      const bold=i===3; const bg=bold?verde:W; const fg=bold?W:'333333';
+      res.push([txt(l,bg,fg,bold),num(v,bg,bold?'A8D8C0':fg,bold),txt(pct,bg,fg,bold,'center')]);
     });
-
-    const hdr = (v, bg) => cell(v, true, bg||verde, blanco, 'center', 10, true);
-    const num = (v, bg, fg, bold) => ({...cell(v, bold, bg, fg, 'right'), t:'n'});
-    const lbl = (v, bold, bg, fg) => cell(v, bold, bg, fg, 'left');
-
-    // ─────────────────────────────────────────────────
-    // HOJA 1 — RESUMEN EJECUTIVO
-    // ─────────────────────────────────────────────────
-    const resData = [];
-
-    // Título
-    resData.push([cell('CRÉDITO SAN JUAN — RESUMEN EJECUTIVO', true, verde, blanco, 'center', 14)]);
-    resData.push([cell(`Generado: ${new Date().toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'})}`, false, verde, 'A8D8C0', 'center', 9)]);
-    resData.push([cell('')]);
-
-    // Bloque 1: Portfolio
-    resData.push([cell('PORTFOLIO DE PRÉSTAMOS', true, teal, blanco, 'left', 11)]);
-    resData.push([lbl('Métrica',true,gris,'555555'), lbl('Valor',true,gris,'555555'), lbl('Detalle',true,gris,'555555')]);
-    [
-      ['Total de préstamos', loans.length, 'registros'],
-      ['  · Activos + En curso', nActEnCur, `${Math.round(nActEnCur/Math.max(1,loans.length)*100)}% del total`],
-      ['  · En mora / Vencidos', nVencido,  `${Math.round(nVencido/Math.max(1,loans.length)*100)}% del total`],
-      ['  · Cancelados', nCancel,  `${Math.round(nCancel/Math.max(1,loans.length)*100)}% del total`],
-    ].forEach(([l,v,d])=>{
-      resData.push([lbl(l,false,blanco), num(v,blanco,'1B4F45'), lbl(d,false,blanco,'888888')]);
+    res.push([txt('')]);
+    res.push([txt('FINANCIERO',teal,W,true)]);
+    res.push([txt('Concepto',gris,'555',true),txt('Monto S/.',gris,'555',true),txt('% capital',gris,'555',true)]);
+    [[`Capital prestado`,totPres,100],[`Capital recuperado`,totCapRec,Math.round(totCapRec/Math.max(1,totPres)*100)],[`Capital en calle`,capEnCalle,Math.round(capEnCalle/Math.max(1,totPres)*100)],[`Total cobrado`,totCob,null],[`Interés cobrado`,totInt,Math.round(totInt/Math.max(1,totPres)*100)],[`Mora cobrada`,totMora,null],[`Por cobrar`,porCobrar,Math.round(porCobrar/Math.max(1,totPres)*100)]].forEach(([l,v,pct],i)=>{
+      const bold=i===0; const bg=bold?verde:W; const fg=bold?W:'333333';
+      res.push([txt(l,bg,fg,bold),num(v,bg,bold?'A8D8C0':fg,bold),txt(pct!=null?pct+'%':'—',bg,fg,false,'center')]);
     });
+    const ws1=XL.utils.aoa_to_sheet(res.map(r=>r.map(c=>c.v)));
+    res.forEach((row,ri)=>row.forEach((c,ci)=>{const ref=XL.utils.encode_cell({r:ri,c:ci});if(ws1[ref]){ws1[ref].s=c.s;if(c.t==='n')ws1[ref].t='n';}}));
+    ws1['!cols']=[{wch:26},{wch:15},{wch:12}];
+    ws1['!rows']=res.map(()=>({hpt:18}));ws1['!rows'][0]={hpt:26};
+    ws1['!merges']=[{s:{r:0,c:0},e:{r:0,c:2}},{s:{r:1,c:0},e:{r:1,c:2}}];
 
-    resData.push([cell('')]);
-    resData.push([cell('RESUMEN FINANCIERO', true, teal, blanco, 'left', 11)]);
-    resData.push([lbl('Concepto',true,gris,'555555'), lbl('Monto (S/.)',true,gris,'555555'), lbl('% sobre capital',true,gris,'555555')]);
-    [
-      ['Capital total prestado',   totPres,     '100%',       verde],
-      ['Capital recuperado',       totCapRec,   Math.round(totCapRec/Math.max(1,totPres)*100)+'%', teal],
-      ['Capital en calle',         capEnCalle,  Math.round(capEnCalle/Math.max(1,totPres)*100)+'%', naranja],
-      ['Por cobrar (activos)',      porCobrar,   Math.round(porCobrar/Math.max(1,totPres)*100)+'%', azul],
-      ['Total cobrado (cash real)', totCob,      '',  '1e6e3a'],
-      ['Interés cobrado',           totInt,      Math.round(totInt/Math.max(1,totPres)*100)+'%', teal2],
-      ['Mora cobrada',              totMora,     '',  rojo],
-    ].forEach(([l,v,pct,col])=>{
-      resData.push([lbl(l,false,blanco), num(parseFloat(v.toFixed(2)),blanco,col||'333333',true), lbl(pct,false,blanco,'888888')]);
-    });
-
-    resData.push([cell('')]);
-    resData.push([cell('DESGLOSE POR ESTADO', true, teal, blanco, 'left', 11)]);
-    resData.push([lbl('Estado',true,gris,'555555'), lbl('N° préstamos',true,gris,'555555'), lbl('Capital (S/.)',true,gris,'555555'), lbl('Cobrado (S/.)',true,gris,'555555'), lbl('Saldo (S/.)',true,gris,'555555')]);
-    const estColors = {ACTIVO:'276221',CANCELADO:'595959','EN CURSO':azul,VENCIDO:rojo};
-    const estBgR    = {ACTIVO:'E8F8EE',CANCELADO:'EFEFEF','EN CURSO':'EBF0FF',VENCIDO:'FDE8E8'};
-    estadoRows.forEach(r=>{
-      const bg = estBgR[r.est]||blanco;
-      const fg = estColors[r.est]||'333333';
-      resData.push([
-        lbl(r.label, true, bg, fg),
-        num(r.n||0, bg, fg),
-        num(parseFloat((r.monto||0).toFixed(2)), bg, fg),
-        num(parseFloat((r.cobrado||0).toFixed(2)), bg, fg),
-        num(parseFloat((r.porCobrar||0).toFixed(2)), bg, fg),
-      ]);
-    });
-    // Total
-    resData.push([
-      lbl('TOTALES', true, verde, blanco),
-      num(loans.length, verde, blanco, true),
-      num(parseFloat(totPres.toFixed(2)), verde, blanco, true),
-      num(parseFloat(totCob.toFixed(2)), verde, blanco, true),
-      num(parseFloat(porCobrar.toFixed(2)), verde, blanco, true),
-    ]);
-
-    // Build ws1
-    const ws1 = XL.utils.aoa_to_sheet(resData.map(r=>r.map(c=>c.v)));
-    resData.forEach((row, ri)=>{
-      row.forEach((c, ci)=>{
-        const ref = XL.utils.encode_cell({r:ri, c:ci});
-        if(!ws1[ref]) return;
-        ws1[ref].s = c.s;
-        if(c.t==='n') ws1[ref].t='n';
-      });
-    });
-    ws1['!cols'] = [{wch:32},{wch:16},{wch:18},{wch:16},{wch:14}];
-    ws1['!rows'] = resData.map(()=>({hpt:18}));
-    ws1['!rows'][0] = {hpt:28};
-    ws1['!merges'] = [
-      {s:{r:0,c:0},e:{r:0,c:4}},
-      {s:{r:1,c:0},e:{r:1,c:4}},
-    ];
-
-    // ─────────────────────────────────────────────────
-    // HOJA 2 — PRÉSTAMOS
-    // ─────────────────────────────────────────────────
-    const loanHeaders = [
-      'ID','Cliente','Garante','Referido por','¿Externo?',
-      'Monto (S/.)','Tasa %','Tipo','Cuotas','Fecha inicio',
-      'Capital recup. (S/.)','Total cobrado (S/.)','Por cobrar (S/.)','Mora (S/.)',
-      'Estado','Registrado por'
-    ];
-    const loanRows = loans.map(l=>{
-      const cuotas = sched.filter(r=>Number(r.prestamo_id)===Number(l.id));
-      const est    = getEstPrestamo(cuotas);
-      const cobrado= cuotas.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
-      const capRec = est==='CANCELADO' ? N(l.monto)
-        : cuotas.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).reduce((a,r)=>a+N(r.capital_cuota),0);
-      const saldoL = est==='CANCELADO' ? 0 : cuotas.reduce((a,r)=>a+getSaldo(r),0);
-      const mora   = cuotas.reduce((a,r)=>a+N(r.mora||0),0);
-      return [
-        l.id, l.cliente, l.garante||'', l.referencia||'', l.cliente_externo||'NO',
-        N(l.monto), parseFloat((N(l.tasa)*100).toFixed(2)), l.tipo, l.cuotas,
-        fmtD(l.fecha_prestamo),
-        parseFloat(capRec.toFixed(2)), parseFloat(cobrado.toFixed(2)),
-        parseFloat(saldoL.toFixed(2)), parseFloat(mora.toFixed(2)),
-        est, l.creado_por_email||''
-      ];
-    });
-
-    const ws2 = XL.utils.aoa_to_sheet([loanHeaders, ...loanRows]);
-    ws2['!cols'] = [{wch:5},{wch:24},{wch:18},{wch:16},{wch:9},
-                    {wch:13},{wch:7},{wch:9},{wch:7},{wch:13},
-                    {wch:14},{wch:13},{wch:13},{wch:10},
-                    {wch:11},{wch:22}];
-    ws2['!rows'] = [{hpt:24}, ...loanRows.map(()=>({hpt:17})), {hpt:20}];
-
-    const hSt2 = {font:{bold:true,color:{rgb:blanco},sz:10,name:'Calibri'},fill:{fgColor:{rgb:verde}},alignment:{horizontal:'center',vertical:'center'},border:{bottom:{style:'medium',color:{rgb:teal}}}};
-    loanHeaders.forEach((_,ci)=>{
-      const ref=XL.utils.encode_cell({r:0,c:ci});
-      if(ws2[ref]) ws2[ref].s=hSt2;
-    });
-
+    // ── HOJA 2: PRÉSTAMOS ─────────────────────────────────────
+    const h2=['ID','Cliente','Garante','Referido por','Ext.','Monto S/.','Tasa %','Tipo','Cuotas','Fecha inicio','Cap. recup. S/.','Total cob. S/.','Por cobrar S/.','Mora S/.','Estado','Registrado por'];
     const estBgL={ACTIVO:'E8F8EE','EN CURSO':'EBF0FF',VENCIDO:'FDE8E8',CANCELADO:'EFEFEF'};
-    const estFgL={ACTIVO:'276221','EN CURSO':azul,    VENCIDO:rojo,     CANCELADO:'595959'};
-    const numCols=new Set([5,6,8,10,11,12,13]);
-    loanRows.forEach((row,ri)=>{
-      const bg  = ri%2===0?blanco:'F4FAF8';
-      const est = row[14];
+    const estFgL={ACTIVO:'276221','EN CURSO':azul,VENCIDO:rojo,CANCELADO:'595959'};
+    const numC2=new Set([5,6,8,10,11,12,13]);
+    const lRows=loans.map(l=>{
+      const cuotas=sched.filter(r=>Number(r.prestamo_id)===Number(l.id));
+      const est=getEstPrestamo(cuotas);
+      const cobrado=cuotas.filter(r=>r.monto_pagado).reduce((a,r)=>a+N(r.monto_pagado),0);
+      const capRec=est==='CANCELADO'?N(l.monto):cuotas.filter(r=>['Pagado','Adelantado'].includes(getEst(r))).reduce((a,r)=>a+N(r.capital_cuota),0);
+      const saldoL=est==='CANCELADO'?0:cuotas.reduce((a,r)=>a+getSaldo(r),0);
+      const mora=cuotas.reduce((a,r)=>a+N(r.mora||0),0);
+      return[l.id,l.cliente,l.garante||'',l.referencia||'',l.cliente_externo||'NO',N(l.monto),parseFloat((N(l.tasa)*100).toFixed(2)),l.tipo,l.cuotas,fmtD(l.fecha_prestamo),parseFloat(capRec.toFixed(2)),parseFloat(cobrado.toFixed(2)),parseFloat(saldoL.toFixed(2)),parseFloat(mora.toFixed(2)),est,l.creado_por_email||''];
+    });
+    const ws2=XL.utils.aoa_to_sheet([h2,...lRows]);
+    ws2['!cols']=[{wch:5},{wch:22},{wch:16},{wch:14},{wch:5},{wch:12},{wch:7},{wch:8},{wch:6},{wch:12},{wch:13},{wch:12},{wch:13},{wch:9},{wch:11},{wch:20}];
+    ws2['!rows']=[{hpt:22},...lRows.map(()=>({hpt:17})),{hpt:20}];
+    const hSt2={font:{bold:true,color:{rgb:W},sz:10,name:'Calibri'},fill:{fgColor:{rgb:verde}},alignment:{horizontal:'center',vertical:'center'},border:{bottom:{style:'medium',color:{rgb:teal}}}};
+    h2.forEach((_,ci)=>{const ref=XL.utils.encode_cell({r:0,c:ci});if(ws2[ref])ws2[ref].s=hSt2;});
+    lRows.forEach((row,ri)=>{
+      const bg=ri%2===0?W:'F4FAF8'; const est=row[14];
       row.forEach((_,ci)=>{
-        const ref=XL.utils.encode_cell({r:ri+1,c:ci});
-        if(!ws2[ref])return;
-        const isEst = ci===14;
-        const isNum = numCols.has(ci);
-        const isName= ci===1;
-        ws2[ref].s = {
-          fill:{fgColor:{rgb: isEst?(estBgL[est]||'F5F5F5'):bg}},
-          font:{sz:10, name:'Calibri', bold:isName||isEst,
-                color:{rgb: isEst?(estFgL[est]||'555555'):(isName?verde:'333333')}},
-          alignment:{horizontal:isNum?'right':(ci===0?'center':'left'),vertical:'center'},
-          border:{bottom:{style:'thin',color:{rgb:'E0E8E0'}},right:{style:'thin',color:{rgb:'EEEEEE'}}}
-        };
+        const ref=XL.utils.encode_cell({r:ri+1,c:ci}); if(!ws2[ref])return;
+        const isEst=ci===14; const isNum=numC2.has(ci);
+        ws2[ref].s={fill:{fgColor:{rgb:isEst?(estBgL[est]||gris):bg}},font:{sz:10,name:'Calibri',bold:ci===1||isEst,color:{rgb:isEst?(estFgL[est]||'555'):ci===1?verde:'333333'}},alignment:{horizontal:isNum?'right':ci===0?'center':'left',vertical:'center'},border:{bottom:{style:'thin',color:{rgb:'E0E8E0'}},right:{style:'thin',color:{rgb:'EEEEEE'}}}};
       });
     });
-
-    // Totals row
-    const totMonto2=loanRows.reduce((a,r)=>a+r[5],0);
-    const totCapR2 =loanRows.reduce((a,r)=>a+r[10],0);
-    const totCob2  =loanRows.reduce((a,r)=>a+r[11],0);
-    const totSaldo2=loanRows.reduce((a,r)=>a+r[12],0);
-    const totMora2 =loanRows.reduce((a,r)=>a+r[13],0);
-    const totRowL  =['','TOTALES','','','',
-      parseFloat(totMonto2.toFixed(2)),'','','','',
-      parseFloat(totCapR2.toFixed(2)),parseFloat(totCob2.toFixed(2)),
-      parseFloat(totSaldo2.toFixed(2)),parseFloat(totMora2.toFixed(2)),'',''];
+    const totMonto=lRows.reduce((a,r)=>a+r[5],0),totCapR=lRows.reduce((a,r)=>a+r[10],0),totCob2=lRows.reduce((a,r)=>a+r[11],0),totSaldo=lRows.reduce((a,r)=>a+r[12],0),totMora2=lRows.reduce((a,r)=>a+r[13],0);
+    const totRowL=['','TOTALES','','','',parseFloat(totMonto.toFixed(2)),'','','','',parseFloat(totCapR.toFixed(2)),parseFloat(totCob2.toFixed(2)),parseFloat(totSaldo.toFixed(2)),parseFloat(totMora2.toFixed(2)),'',''];
     XL.utils.sheet_add_aoa(ws2,[totRowL],{origin:-1});
-    const lastR2=loanRows.length+1;
-    totRowL.forEach((v,ci)=>{
-      const ref=XL.utils.encode_cell({r:lastR2,c:ci});
-      if(!ws2[ref])return;
-      ws2[ref].s={fill:{fgColor:{rgb:verde}},font:{bold:true,color:{rgb:typeof v==='number'?'A8D8C0':blanco},sz:10,name:'Calibri'},alignment:{horizontal:numCols.has(ci)?'right':(ci===1?'left':'center'),vertical:'center'}};
-    });
-    ws2['!freeze'] = {xSplit:0, ySplit:1, topLeftCell:'A2', activePane:'bottomLeft'};
+    const lastR2=lRows.length+1;
+    totRowL.forEach((v,ci)=>{const ref=XL.utils.encode_cell({r:lastR2,c:ci});if(!ws2[ref])return;ws2[ref].s={fill:{fgColor:{rgb:verde}},font:{bold:true,color:{rgb:typeof v==='number'?'A8D8C0':W},sz:10,name:'Calibri'},alignment:{horizontal:numC2.has(ci)?'right':ci===1?'left':'center',vertical:'center'}};});
+    ws2['!freeze']={xSplit:0,ySplit:1,topLeftCell:'A2',activePane:'bottomLeft'};
 
-    // ─────────────────────────────────────────────────
-    // HOJA 3 — CRONOGRAMA
-    // ─────────────────────────────────────────────────
-    const cronoHeaders = [
-      'Préstamo ID','Cliente','N° Cuota','Fecha vence',
-      'Capital (S/.)','Interés (S/.)','Desgrav. (S/.)','G.Op. (S/.)','Cuota base (S/.)',
-      'Mora (S/.)','Tipo pago','Monto pagado (S/.)','Fecha pago','Estado','Saldo (S/.)'
-    ];
-    const sorted = [...sched].sort((a,b)=>Number(a.prestamo_id)-Number(b.prestamo_id)||a.n_cuota-b.n_cuota);
-    const cronoRows = sorted.map(r=>[
-      r.prestamo_id, r.cliente, r.n_cuota, fmtD(r.fecha_vence),
-      N(r.capital_cuota), N(r.interes_cuota), N(r.desgravamen), N(r.gasto_operativo||0), N(r.cuota_base),
-      N(r.mora||0), r.tipo_pago||'', r.monto_pagado?N(r.monto_pagado):'',
-      r.fecha_pago?fmtD(r.fecha_pago):'', getEst(r), parseFloat(getSaldo(r).toFixed(2))
-    ]);
-
-    const ws3 = XL.utils.aoa_to_sheet([cronoHeaders,...cronoRows]);
-    ws3['!cols'] = [{wch:13},{wch:22},{wch:9},{wch:13},{wch:11},{wch:11},{wch:11},{wch:9},{wch:13},{wch:9},{wch:17},{wch:14},{wch:13},{wch:12},{wch:11}];
-    ws3['!rows'] = [{hpt:22},...cronoRows.map(()=>({hpt:16}))];
-
-    const hSt3 = {...hSt2, fill:{fgColor:{rgb:teal}}};
-    cronoHeaders.forEach((_,ci)=>{
-      const ref=XL.utils.encode_cell({r:0,c:ci});
-      if(ws3[ref]) ws3[ref].s=hSt3;
-    });
-
-    const estBgC={'Pagado':'C8F0D8','Adelantado':'C8F0D8','Vencido':'FCCFCF','Pendiente':'D0E4FF','Parcial':'FFF0C0','Solo int.':'D8F0E0','CANCELAR PRÉSTAMO':'E8E8E8'};
-    const numColsC = new Set([4,5,6,7,8,9,11,14]);
-    cronoRows.forEach((row,ri)=>{
-      const bg  = ri%2===0?blanco:'F5FAF8';
-      const est = row[13];
+    // ── HOJA 3: CRONOGRAMA ────────────────────────────────────
+    const h3=['ID Préstamo','Cliente','N° Cuota','Fecha vence','Capital S/.','Interés S/.','Desgrav. S/.','G.Op. S/.','Cuota base S/.','Mora S/.','Tipo pago','Pagado S/.','Fecha pago','Estado','Saldo S/.'];
+    const estBgC={'Pagado':'C8F0D8','Adelantado':'C8F0D8','Vencido':'FCCFCF','Pendiente':'D0E4FF','Parcial':'FFF0C0','Solo int.':'D8F0E0'};
+    const numC3=new Set([4,5,6,7,8,9,11,14]);
+    const sorted=[...sched].sort((a,b)=>Number(a.prestamo_id)-Number(b.prestamo_id)||a.n_cuota-b.n_cuota);
+    const cRows=sorted.map(r=>[r.prestamo_id,r.cliente,r.n_cuota,fmtD(r.fecha_vence),N(r.capital_cuota),N(r.interes_cuota),N(r.desgravamen),N(r.gasto_operativo||0),N(r.cuota_base),N(r.mora||0),r.tipo_pago||'',r.monto_pagado?N(r.monto_pagado):'',r.fecha_pago?fmtD(r.fecha_pago):'',getEst(r),parseFloat(getSaldo(r).toFixed(2))]);
+    const ws3=XL.utils.aoa_to_sheet([h3,...cRows]);
+    ws3['!cols']=[{wch:12},{wch:20},{wch:8},{wch:12},{wch:10},{wch:10},{wch:10},{wch:8},{wch:12},{wch:8},{wch:16},{wch:11},{wch:12},{wch:11},{wch:10}];
+    ws3['!rows']=[{hpt:22},...cRows.map(()=>({hpt:16}))];
+    const hSt3={...hSt2,fill:{fgColor:{rgb:teal}}};
+    h3.forEach((_,ci)=>{const ref=XL.utils.encode_cell({r:0,c:ci});if(ws3[ref])ws3[ref].s=hSt3;});
+    cRows.forEach((row,ri)=>{
+      const bg=ri%2===0?W:'F5FAF8'; const est=row[13];
       row.forEach((_,ci)=>{
-        const ref=XL.utils.encode_cell({r:ri+1,c:ci});
-        if(!ws3[ref])return;
-        const isEst=ci===13;
-        const isNum=numColsC.has(ci);
-        ws3[ref].s={
-          fill:{fgColor:{rgb: isEst?(estBgC[est]||'F5F5F5'):bg}},
-          font:{sz:9, name:'Calibri', bold:isEst||ci===8,
-                color:{rgb: isEst?'333333':'444444'}},
-          alignment:{horizontal:isNum?'right':(ci<=1||ci===10?'left':'center'),vertical:'center'},
-          border:{bottom:{style:'thin',color:{rgb:'E8EEE8'}},right:{style:'thin',color:{rgb:'F0F0F0'}}}
-        };
+        const ref=XL.utils.encode_cell({r:ri+1,c:ci}); if(!ws3[ref])return;
+        const isEst=ci===13; const isNum=numC3.has(ci);
+        ws3[ref].s={fill:{fgColor:{rgb:isEst?(estBgC[est]||gris):bg}},font:{sz:9,name:'Calibri',bold:isEst,color:{rgb:'444444'}},alignment:{horizontal:isNum?'right':ci<=1||ci===10?'left':'center',vertical:'center'},border:{bottom:{style:'thin',color:{rgb:'E8EEE8'}},right:{style:'thin',color:{rgb:'F0F0F0'}}}};
       });
     });
-    ws3['!freeze'] = {xSplit:0, ySplit:1, topLeftCell:'A2', activePane:'bottomLeft'};
+    ws3['!freeze']={xSplit:0,ySplit:1,topLeftCell:'A2',activePane:'bottomLeft'};
 
-    XL.utils.book_append_sheet(wb, ws1, '📊 Resumen');
-    XL.utils.book_append_sheet(wb, ws2, '💼 Préstamos');
-    XL.utils.book_append_sheet(wb, ws3, '📅 Cronograma');
-    XL.writeFile(wb, `CreditoSanJuan_${todayStr()}.xlsx`);
+    XL.utils.book_append_sheet(wb,ws1,'📊 Resumen');
+    XL.utils.book_append_sheet(wb,ws2,'💼 Préstamos');
+    XL.utils.book_append_sheet(wb,ws3,'📅 Cronograma');
+    XL.writeFile(wb,`CreditoSanJuan_${todayStr()}.xlsx`);
   }
 
-  // ── UI ────────────────────────────────────────────────────────
-  const estCfg = {
-    ACTIVO:    {label:'Activo',    c:'#1e6e3a', bg:'#dff2e8', border:'#7dbfa0'},
-    'EN CURSO':{label:'En curso',  c:'#a0620a', bg:'#fef3e2', border:'#f0b97a'},
-    VENCIDO:   {label:'Vencido',   c:'#b52a2a', bg:'#fde8e8', border:'#f5a5a5'},
-    CANCELADO: {label:'Cancelado', c:'#555',    bg:'#f2f2f2', border:'#ccc'},
-  };
+  // ── UI — limpio, visual, sin repetir Dashboard ────────────────
+  const pctRec  = totPres>0?Math.round(totCapRec/totPres*100):0;
+  const pctCalle= totPres>0?Math.round(capEnCalle/totPres*100):0;
+  const pctCob  = totPres>0?Math.round(totCob/totPres*100):0;
+  const pctVenc = totPres>0?Math.round(porCobrar/totPres*100):0;
+
+  // Mini donut SVG inline
+  function MiniDonut({segs,size=56}){
+    const r=22,cx=size/2,cy=size/2,circ=2*Math.PI*r;
+    let off=0;
+    return(
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{transform:'rotate(-90deg)',flexShrink:0}}>
+        {segs.map((s,i)=>{
+          const pct=s.pct/100; const p=<circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={s.c} strokeWidth="9" strokeDasharray={`${circ*pct} ${circ*(1-pct)}`} strokeDashoffset={-off*circ}/>;
+          off+=pct; return p;
+        })}
+        <circle cx={cx} cy={cy} r="14" fill="#fff"/>
+      </svg>
+    );
+  }
 
   return(
     <div style={{animation:'fadeIn .3s ease'}}>
       <div>
         <div className="pg-ey">Reportes</div>
         <div className="pg-ti">Exportar a Excel</div>
-        <div className="pg-su">Genera un archivo .xlsx con 3 hojas: Resumen ejecutivo · Préstamos detallados · Cronograma completo</div>
+        <div className="pg-su">3 hojas con formato · Resumen ejecutivo · Detalle de préstamos · Cronograma completo</div>
       </div>
 
-      {/* ── RESUMEN DE CARTERA (reemplaza KPIs repetidos) ── */}
-      <div className="card" style={{marginBottom:12}}>
-        <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Estado de la cartera — snapshot actual</div></div>
-        <div className="c-bd" style={{display:'grid',gap:12}}>
+      {/* ── VISUAL PRINCIPAL: 2 gráficos lado a lado ── */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}} className="dash-row-2">
 
-          {/* Distribución por estado */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:8}}>
-            {estadoRows.map(r=>{
-              const cfg=estCfg[r.est]||{label:r.est,c:'#555',bg:'#f5f5f5',border:'#ccc'};
-              const pct=Math.round((r.n||0)/Math.max(1,loans.length)*100);
-              return(
-                <div key={r.est} style={{background:cfg.bg,border:'1.5px solid '+cfg.border,borderRadius:8,padding:'12px 14px'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
-                    <div style={{fontSize:10,fontWeight:700,color:cfg.c,textTransform:'uppercase',letterSpacing:'.08em'}}>{cfg.label}</div>
-                    <span style={{fontSize:10,color:cfg.c,background:'rgba(0,0,0,.06)',borderRadius:10,padding:'1px 7px',fontWeight:700}}>{pct}%</span>
+        {/* Distribución cartera */}
+        <div className="card">
+          <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Cartera — {loans.length} préstamos</div></div>
+          <div className="c-bd" style={{display:'flex',gap:14,alignItems:'center'}}>
+            <MiniDonut segs={[
+              {pct:totPres>0?Math.round(nActivo/loans.length*100):0, c:T},
+              {pct:totPres>0?Math.round(nVencido/loans.length*100):0, c:'#b52a2a'},
+              {pct:totPres>0?Math.round(nCancelado/loans.length*100):0, c:'#ccc'},
+            ]}/>
+            <div style={{flex:1,display:'grid',gap:7}}>
+              {[
+                {l:'Activos/En curso', n:nActivo,    c:T,         pct:Math.round(nActivo/Math.max(1,loans.length)*100)},
+                {l:'En mora',         n:nVencido,   c:'#b52a2a', pct:Math.round(nVencido/Math.max(1,loans.length)*100)},
+                {l:'Cancelados',      n:nCancelado, c:'#aaa',    pct:Math.round(nCancelado/Math.max(1,loans.length)*100)},
+              ].map(i=>(
+                <div key={i.l} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6,flex:1,minWidth:0}}>
+                    <span style={{width:7,height:7,borderRadius:1,background:i.c,flexShrink:0,display:'inline-block'}}/>
+                    <span style={{fontSize:11.5,color:'#555',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{i.l}</span>
                   </div>
-                  <div style={{fontSize:22,fontWeight:700,color:cfg.c,lineHeight:1,marginBottom:4}}>{r.n||0}</div>
-                  <div style={{fontSize:11,color:cfg.c,opacity:.7}}>{fmt(r.monto||0)}</div>
+                  <span style={{fontWeight:700,color:i.c,fontSize:12,whiteSpace:'nowrap'}}>{i.n} <span style={{fontWeight:400,color:'#bbb',fontSize:10}}>({i.pct}%)</span></span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
+        </div>
 
-          {/* Tabla financiera consolidada */}
-          <div style={{borderRadius:6,overflow:'hidden',border:'1px solid var(--border)'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}>
-              <thead>
-                <tr style={{background:'var(--light)'}}>
-                  <th style={{padding:'8px 13px',textAlign:'left',fontWeight:700,color:'var(--grey)',fontSize:10.5,textTransform:'uppercase',letterSpacing:'.06em'}}>Concepto</th>
-                  {estadoRows.map(r=>(
-                    <th key={r.est} style={{padding:'8px 13px',textAlign:'right',fontWeight:700,color:estCfg[r.est]?.c||'#555',fontSize:10.5,textTransform:'uppercase',letterSpacing:'.05em'}}>{estCfg[r.est]?.label||r.est}</th>
-                  ))}
-                  <th style={{padding:'8px 13px',textAlign:'right',fontWeight:700,color:D,fontSize:10.5,background:'#d4ede5'}}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  {l:'Capital prestado',  fn:r=>r.monto||0,      tot:totPres},
-                  {l:'Total cobrado',     fn:r=>r.cobrado||0,    tot:totCob},
-                  {l:'Por cobrar / saldo',fn:r=>r.porCobrar||0,  tot:porCobrar},
-                ].map((row,i)=>(
-                  <tr key={row.l} style={{borderBottom:'1px solid var(--border)',background:i%2===0?'#fff':'var(--alt)'}}>
-                    <td style={{padding:'8px 13px',color:'#444',fontWeight:500}}>{row.l}</td>
-                    {estadoRows.map(r=>(
-                      <td key={r.est} style={{padding:'8px 13px',textAlign:'right',fontWeight:600,color:'var(--ink)'}}>{fmt(row.fn(r))}</td>
-                    ))}
-                    <td style={{padding:'8px 13px',textAlign:'right',fontWeight:700,color:D,background:'#e8f4f0'}}>{fmt(row.tot)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{background:'var(--light)'}}>
-                  <td style={{padding:'8px 13px',color:'var(--grey)',fontSize:11,fontStyle:'italic'}} colSpan={estadoRows.length+2}>
-                    Capital recuperado (cancelados=100%, activos=cuotas pagadas): <strong style={{color:T}}>{fmt(totCapRec)}</strong> · 
-                    Interés cobrado: <strong style={{color:T2}}>{fmt(totInt)}</strong> · 
-                    Mora: <strong style={{color:'#b52a2a'}}>{fmt(totMora)}</strong>
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+        {/* Flujo de capital — barra apilada */}
+        <div className="card">
+          <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Capital — {fmt(totPres)}</div></div>
+          <div className="c-bd">
+            {/* Barra apilada */}
+            <div style={{height:18,borderRadius:6,overflow:'hidden',display:'flex',marginBottom:12,background:'#f0f4f0'}}>
+              {pctRec>0&&<div style={{width:pctRec+'%',background:T,transition:'width .5s'}}/>}
+              {pctCalle>0&&<div style={{width:pctCalle+'%',background:'#d4ac44',transition:'width .5s'}}/>}
+            </div>
+            {[
+              {l:'Recuperado', v:totCapRec,  c:T,        pct:pctRec},
+              {l:'En calle',   v:capEnCalle, c:'#d4ac44',pct:pctCalle},
+            ].map(r=>(
+              <div key={r.l} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7}}>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{width:10,height:10,borderRadius:2,background:r.c,display:'inline-block'}}/>
+                  <span style={{fontSize:12,color:'#555'}}>{r.l}</span>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <span style={{fontWeight:700,color:r.c,fontSize:12}}>{r.pct}%</span>
+                  <span style={{color:'#ccc',fontSize:10.5,marginLeft:5}}>{fmt(r.v)}</span>
+                </div>
+              </div>
+            ))}
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:7,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:11,color:'#888'}}>Interés cobrado</span>
+              <span style={{fontWeight:700,color:T2,fontSize:12}}>{fmt(totInt)}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ── CONTENIDO DEL EXCEL ── */}
+      {/* ── CONTENIDO DEL EXCEL — compacto ── */}
       <div className="card" style={{marginBottom:12}}>
-        <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Contenido del archivo Excel (3 hojas)</div></div>
-        <div className="c-bd" style={{display:'grid',gap:9}}>
+        <div className="c-hd"><div className="c-dot"/><div className="c-hd-t">Qué incluye el archivo</div></div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:0}}>
           {[
-            {icon:'📊',sheet:'Hoja 1 — Resumen ejecutivo',
-             cols:'Portfolio por estado · Indicadores financieros · Capital recuperado vs en calle',
-             n:estadoRows.length+' estados',c:D,note:'Pivot listo para gerencia'},
-            {icon:'💼',sheet:'Hoja 2 — Préstamos detallados',
-             cols:'ID · Cliente · Garante · Monto · Tasa · Cuotas · Capital recuperado · Total cobrado · Por cobrar · Estado',
-             n:loans.length+' préstamos',c:T,note:'Con totales y formato por estado'},
-            {icon:'📅',sheet:'Hoja 3 — Cronograma completo',
-             cols:'Préstamo · Cuota · Fecha vence · Capital · Interés · Cuota base · Mora · Monto pagado · Estado · Saldo',
-             n:sched.length+' cuotas',c:T2,note:'Panel de pago completo'},
+            {icon:'📊',n:'Hoja 1',sub:'Resumen ejecutivo',desc:`${loans.length} préstamos · ${Object.keys(byEst).filter(k=>byEst[k]).length} estados`,c:D},
+            {icon:'💼',n:'Hoja 2',sub:'Préstamos',desc:`${loans.length} filas · capital, cobrado, saldo`,c:T},
+            {icon:'📅',n:'Hoja 3',sub:'Cronograma',desc:`${sched.length} cuotas · colores por estado`,c:T2},
           ].map((h,i)=>(
-            <div key={i} style={{display:'flex',gap:13,padding:'11px 15px',background:'var(--alt)',borderRadius:7,border:'1px solid var(--border)',alignItems:'flex-start'}}>
-              <span style={{fontSize:22,flexShrink:0,marginTop:1}}>{h.icon}</span>
-              <div style={{flex:1}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:3,flexWrap:'wrap',gap:6}}>
-                  <div style={{fontWeight:700,color:'var(--ink)',fontSize:13}}>{h.sheet}</div>
-                  <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                    <span style={{fontSize:10,color:'#888',fontStyle:'italic'}}>{h.note}</span>
-                    <span style={{fontSize:10.5,color:'#fff',background:h.c,borderRadius:4,padding:'2px 9px',fontWeight:600}}>{h.n}</span>
-                  </div>
-                </div>
-                <div style={{fontSize:11.5,color:'var(--grey)',lineHeight:1.5}}>{h.cols}</div>
-              </div>
+            <div key={i} style={{padding:'13px 14px',borderLeft:i>0?'1px solid var(--border)':'none',textAlign:'center'}}>
+              <div style={{fontSize:22,marginBottom:5}}>{h.icon}</div>
+              <div style={{fontSize:9.5,fontWeight:700,color:h.c,textTransform:'uppercase',letterSpacing:'.07em',marginBottom:2}}>{h.n}</div>
+              <div style={{fontSize:12.5,fontWeight:700,color:'var(--ink)',marginBottom:3}}>{h.sub}</div>
+              <div style={{fontSize:10.5,color:'var(--grey)',lineHeight:1.4}}>{h.desc}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* ── BOTÓN DESCARGAR ── */}
-      <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
-        <button className="btn" style={{padding:'13px 32px',fontSize:14,display:'flex',alignItems:'center',gap:10}}
-          onClick={exportar} disabled={loans.length===0}>
-          <svg viewBox="0 0 24 24" style={{width:16,height:16,stroke:'currentColor',fill:'none',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}}>
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Descargar Excel — {loans.length} préstamos · {sched.length} cuotas
-        </button>
-        {loans.length===0&&<div style={{fontSize:13,color:'var(--grey)'}}>No hay datos — registra préstamos primero.</div>}
-        {loans.length>0&&<div style={{fontSize:12,color:'var(--grey)'}}>
-          {todayStr().split('-').reverse().join('/')} · Datos en tiempo real
-        </div>}
-      </div>
+      {/* ── BOTÓN ── */}
+      <button className="btn" style={{width:'100%',padding:'14px',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center',gap:10,borderRadius:10}}
+        onClick={exportar} disabled={loans.length===0}>
+        <svg viewBox="0 0 24 24" style={{width:17,height:17,stroke:'currentColor',fill:'none',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}}>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Descargar Excel
+      </button>
+      {loans.length===0&&<div style={{textAlign:'center',marginTop:9,fontSize:12.5,color:'var(--grey)'}}>Sin préstamos registrados</div>}
     </div>
   );
 }
