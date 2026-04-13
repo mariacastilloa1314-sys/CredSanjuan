@@ -11,6 +11,7 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%;min-height:100vh}
@@ -231,6 +232,80 @@ tfoot td{padding:10px 13px;background:var(--light);font-weight:700;color:var(--d
 const SURL='https://wimkawjgvzcspcxyyibc.supabase.co';
 const SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpbWthd2pndnpjc3BjeHl5aWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MjU3NjUsImV4cCI6MjA4ODMwMTc2NX0.B3p0Bb3s7Fi5y0goUk2IX8e86_PFfyT99OY07Y_wq18';
 
+// ── OneSignal — reemplaza TU_APP_ID con el que te da OneSignal ──
+const ONESIGNAL_APP_ID  = 'TU_APP_ID_AQUI';   // ← PASO 3: pega tu App ID
+const ONESIGNAL_REST_KEY = 'TU_REST_API_KEY';  // ← PASO 4: pega tu REST API Key
+
+// Inicializar OneSignal cuando el DOM esté listo
+window.OneSignalDeferred = window.OneSignalDeferred || [];
+window.OneSignalDeferred.push(async function(OneSignal) {
+  try {
+    await OneSignal.init({
+      appId: ONESIGNAL_APP_ID,
+      notifyButton: { enable: false }, // usamos nuestro propio botón
+      welcomeNotification: {
+        title: 'Crédito San Juan',
+        message: '✅ Notificaciones activadas — recibirás alertas de vencimientos',
+      },
+      // Permitir http en desarrollo local
+      allowLocalhostAsSecureOrigin: true,
+    });
+    console.log('[OneSignal] Inicializado correctamente');
+  } catch(e) {
+    console.warn('[OneSignal] Error init:', e.message);
+  }
+});
+
+// Helpers para usar OneSignal desde React
+async function osGetPermission() {
+  try {
+    if(!window.OneSignal) return 'unsupported';
+    const perm = await window.OneSignal.Notifications.permission;
+    return perm ? 'granted' : 'default';
+  } catch(e) { return 'unsupported'; }
+}
+
+async function osSubscribe() {
+  try {
+    if(!window.OneSignal) return false;
+    await window.OneSignal.Notifications.requestPermission();
+    return true;
+  } catch(e) { console.warn('[OneSignal] Subscribe error:', e); return false; }
+}
+
+async function osUnsubscribe() {
+  try {
+    if(!window.OneSignal) return;
+    await window.OneSignal.User.PushSubscription.optOut();
+  } catch(e) { console.warn('[OneSignal] Unsubscribe error:', e); }
+}
+
+// Enviar notificación de alerta de cobro (REST API de OneSignal)
+async function osSendAlert(titulo, mensaje, url) {
+  if(ONESIGNAL_APP_ID==='TU_APP_ID_AQUI'||ONESIGNAL_REST_KEY==='TU_REST_API_KEY') return;
+  try {
+    // Este endpoint se llama desde el CLIENTE solo para notificaciones propias.
+    // En producción real moverías esto a un backend/Edge Function de Supabase.
+    await fetch('https://onesignal.com/api/v1/notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + ONESIGNAL_REST_KEY,
+      },
+      body: JSON.stringify({
+        app_id: ONESIGNAL_APP_ID,
+        included_segments: ['Subscribed Users'],
+        headings: { es: titulo, en: titulo },
+        contents: { es: mensaje, en: mensaje },
+        url: url || window.location.href,
+        web_push_topic: 'cobro-alert',
+        priority: 10,
+        ttl: 86400,
+      }),
+    });
+  } catch(e) { console.warn('[OneSignal] Send error:', e); }
+}
+
   // ── USUARIOS DEL SISTEMA ──────────────────────────────────────
   // Agrega o cambia usuarios aquí. rol: 'admin' ve todo, 'user' solo opera.
   const PASS_GLOBAL='credi2025#*';
@@ -332,16 +407,23 @@ function getEstPrestamo(cuotas){
 function genCrono(loan,pid){
   const m=N(loan.monto),t=N(loan.tasa),c=N(loan.cuotas);
   const d=N(loan.desgravamen||0),go=N(loan.gasto_operativo||0);
-  const cap=Math.ceil(m/c);
+  // Capital: ceil para cuotas 1..N-1, última absorbe el residuo
+  // Así el total siempre es exactamente loan.monto (sin cobrar de más)
+  const capNormal=Math.ceil(m/c);
+  const capUltima=m-capNormal*(c-1); // puede ser menor si hay residuo
   const int=Math.ceil(calcInt(m,t,loan.tipo,c));
-  const base=cap+int+Math.ceil(d)+Math.ceil(go);
-  return Array.from({length:c},(_,i)=>({
-    prestamo_id:pid,cliente:loan.cliente,n_cuota:i+1,
-    fecha_vence:getFV(loan.fecha_prestamo,i+1,loan.tipo),
-    capital_cuota:cap,interes_cuota:int,desgravamen:d,
-    cuota_base:base,
-    tipo_pago:'NORMAL',monto_pagado:null,mora:null,fecha_pago:null,
-  }));
+  return Array.from({length:c},(_,i)=>{
+    const esUltima=i===c-1;
+    const cap=esUltima?capUltima:capNormal;
+    const base=cap+int+Math.ceil(d)+Math.ceil(go);
+    return{
+      prestamo_id:pid,cliente:loan.cliente,n_cuota:i+1,
+      fecha_vence:getFV(loan.fecha_prestamo,i+1,loan.tipo),
+      capital_cuota:cap,interes_cuota:int,desgravamen:d,
+      cuota_base:base,
+      tipo_pago:'NORMAL',monto_pagado:null,mora:null,fecha_pago:null,
+    };
+  });
 }
 
 // ── Icons SVG ──────────────────────────────────────────────────────
@@ -485,6 +567,60 @@ function Login({onLogin}){
   );
 }
 
+/* ══ NOTIF BUTTON ═══════════════════════════════════════════════ */
+function NotifButton({perm, onPermChange}){
+  const[loading,setLoading]=React.useState(false);
+
+  async function toggle(){
+    if(ONESIGNAL_APP_ID==='TU_APP_ID_AQUI'||ONESIGNAL_REST_KEY==='TU_REST_API_KEY'){
+      alert('⚠ Configura tu App ID y REST API Key de OneSignal (ver guía en el código).');
+      return;
+    }
+    setLoading(true);
+    if(perm==='granted'){
+      await osUnsubscribe();
+      onPermChange('default');
+    } else {
+      const ok = await osSubscribe();
+      const newPerm = await osGetPermission();
+      onPermChange(newPerm);
+      if(ok && newPerm==='granted'){
+        // Test notification
+        await osSendAlert('✅ Crédito San Juan','Notificaciones activadas correctamente');
+      }
+    }
+    setLoading(false);
+  }
+
+  if(perm==='unsupported') return(
+    <div style={{fontSize:9.5,color:'rgba(255,255,255,.3)',textAlign:'center',marginTop:8,padding:'6px 10px',background:'rgba(255,255,255,.04)',borderRadius:6,lineHeight:1.4}}>
+      🔕 Notificaciones no disponibles<br/>
+      <span style={{fontSize:8.5}}>Usa Chrome o Safari (iOS 16.4+)</span>
+    </div>
+  );
+
+  const isOn = perm==='granted';
+  return(
+    <button onClick={toggle} disabled={loading||perm==='denied'} style={{
+      width:'100%',marginTop:8,
+      background:isOn?'rgba(45,138,122,.22)':'rgba(255,255,255,.06)',
+      border:'1px solid '+(isOn?'rgba(45,138,122,.4)':'rgba(255,255,255,.12)'),
+      color:isOn?'#7ecabc':'rgba(255,255,255,.5)',
+      borderRadius:6,padding:'7px 10px',fontSize:11.5,cursor:'pointer',
+      display:'flex',alignItems:'center',justifyContent:'center',gap:7,
+      transition:'all .2s',fontFamily:"'DM Sans',sans-serif",
+      opacity:perm==='denied'?.4:1,
+    }}>
+      {loading?'...':(
+        <>
+          <span style={{fontSize:13}}>{isOn?'🔔':'🔕'}</span>
+          <span style={{fontWeight:600}}>{isOn?'Alertas ON':'Activar alertas'}</span>
+        </>
+      )}
+    </button>
+  );
+}
+
 function App(){
   const[user,setUser]=useState(null);
   const[authLoading,setAuthLoading]=useState(true);
@@ -498,6 +634,15 @@ function App(){
   const[toast,setToast]=useState(null);
   const[mob,setMob]=useState(false);
   const[dbError,setDbError]=useState(null);// Error visible para debug
+  const[notifPerm,setNotifPerm]=useState('default'); // 'default'|'granted'|'denied'|'unsupported'
+
+  // Chequear estado de permisos al cargar
+  useEffect(()=>{
+    (async()=>{
+      const perm = await osGetPermission();
+      setNotifPerm(perm);
+    })();
+  },[]);
 
   useEffect(()=>{
     // Check sessionStorage for existing login
@@ -508,6 +653,12 @@ function App(){
     setAuthLoading(false);
   },[]);
   useEffect(()=>{if(user)loadAll();},[user]);
+
+  // Auto-check alertas después de cargar datos
+  useEffect(()=>{
+    if(!user||!loans.length||!sched.length) return;
+    checkAndFireAlerts(loans, sched);
+  },[loans.length, sched.length]);
 
   async function loadAll(){
     setLoading(true);setDbError(null);
@@ -786,7 +937,9 @@ function App(){
         <div style={{fontSize:9.5,color:'rgba(255,255,255,.3)',letterSpacing:'.1em',textTransform:'uppercase',marginTop:2}}>{user.rol||'usuario'}</div>
         </div>
         <button className="btn-lo" onClick={()=>{sessionStorage.removeItem('csj_user');setUser(null);}}>Cerrar sesión</button>
-        <div style={{fontSize:9,color:'rgba(255,255,255,.18)',textAlign:'center',marginTop:7,letterSpacing:'.08em'}}>v19 · capital unificado</div>
+        {/* Botón notificaciones */}
+        <NotifButton perm={notifPerm} onPermChange={setNotifPerm}/>
+        <div style={{fontSize:9,color:'rgba(255,255,255,.18)',textAlign:'center',marginTop:5,letterSpacing:'.08em'}}>v19 · capital unificado</div>
       </div>
     </>
   );
@@ -830,6 +983,53 @@ function App(){
   );
 }
 
+
+// ══ SISTEMA DE ALERTAS PUSH ════════════════════════════════════
+async function checkAndFireAlerts(loans, sched) {
+  const perm = await osGetPermission();
+  if (perm !== 'granted') return;
+  const THROTTLE_KEY = 'csj_last_alert';
+  const last = parseInt(localStorage.getItem(THROTTLE_KEY)||'0');
+  const ahora = Date.now();
+  if (ahora - last < 60*60*1000) return;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const diff = fv => Math.floor((new Date(fv+'T00:00:00')-hoy)/864e5);
+  const { cancelSet } = calcCapRecuperado(loans, sched);
+  const pendientes = sched.filter(r=>{
+    const est=getEst(r);
+    if(['Pagado','Adelantado'].includes(est))return false;
+    if(cancelSet.has(Number(r.prestamo_id)))return false;
+    if(est==='Solo int.')return diff(r.fecha_vence)<0&&N(r.capital_cuota)>0;
+    if(est==='Parcial')return false;
+    return true;
+  });
+  const hoyList  = pendientes.filter(r=>diff(r.fecha_vence)===0);
+  const proxList = pendientes.filter(r=>{const d=diff(r.fecha_vence);return d>0&&d<=3;});
+  const vencList = pendientes.filter(r=>diff(r.fecha_vence)<0);
+  let titulo='',mensaje='';
+  const getNombres=(list,n=2)=>[...new Set(list.map(r=>(loans.find(l=>Number(l.id)===Number(r.prestamo_id))||{}).cliente||r.cliente))].slice(0,n);
+  const fmtMonto=v=>'S/ '+Math.ceil(v).toLocaleString('es-PE');
+  if(hoyList.length>0){
+    const monto=hoyList.reduce((a,r)=>a+getSaldo(r),0);
+    const ns=getNombres(hoyList);
+    titulo=`🔴 ${hoyList.length} cuota${hoyList.length>1?'s':''} vence${hoyList.length>1?'n':''} HOY`;
+    mensaje=`${ns.join(', ')}${hoyList.length>2?` y ${hoyList.length-2} más`:''} · ${fmtMonto(monto)}`;
+  } else if(vencList.length>0){
+    const monto=vencList.reduce((a,r)=>a+getSaldo(r),0);
+    titulo=`⚫ ${vencList.length} cuota${vencList.length>1?'s':''} en mora`;
+    mensaje=`Total vencido: ${fmtMonto(monto)} — cobrar cuanto antes`;
+  } else if(proxList.length>0){
+    const ns=getNombres(proxList);
+    titulo=`🟡 ${proxList.length} cuota${proxList.length>1?'s':''} vence${proxList.length>1?'n':''} pronto`;
+    mensaje=`${ns.join(', ')}${proxList.length>2?` y ${proxList.length-2} más`:''} — próximos 3 días`;
+  }
+  if(titulo){
+    await osSendAlert(titulo,mensaje);
+    localStorage.setItem(THROTTLE_KEY,String(ahora));
+    console.log('[CSJ] Alerta push enviada:',titulo);
+  }
+}
+// ════════════════════════════════════════════════════════════════
 
 // ── FUNCIÓN COMPARTIDA — Capital recuperado (misma lógica en todo el app) ──
 // Para CANCELADOS: todo el capital (loan.monto) fue recuperado.
