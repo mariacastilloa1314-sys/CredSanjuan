@@ -256,60 +256,84 @@ window.OneSignalDeferred.push(async function(OneSignal) {
   }
 });
 
-// Helpers para usar OneSignal desde React
-async function osGetPermission(retry=8) {
-  // OneSignal carga con `defer` — esperar hasta 4s a que esté listo
+// ── Helpers de notificaciones — usa Native API + OneSignal ────────
+// Prioridad: 1) Native Notification API (siempre disponible en HTTPS)
+//            2) OneSignal para push remoto (cuando cargue)
+
+function nativeNotifSupported(){
+  return typeof Notification !== 'undefined';
+}
+
+async function osGetPermission(retry=1){
+  // 1. Native API — fuente de verdad del permiso del navegador
+  if(nativeNotifSupported()){
+    const p=Notification.permission;
+    if(p==='granted') return 'granted';
+    if(p==='denied')  return 'denied';
+    // default → aún no preguntado
+  }
+  // 2. Fallback OneSignal si está cargado
   for(let i=0;i<retry;i++){
     if(window.OneSignal){
       try{
-        const perm=await window.OneSignal.Notifications.permission;
-        return perm?'granted':'default';
-      }catch(e){return 'unsupported';}
+        const p=await window.OneSignal.Notifications.permission;
+        return p?'granted':'default';
+      }catch(e){}
     }
-    await new Promise(r=>setTimeout(r,500));
+    if(i<retry-1) await new Promise(r=>setTimeout(r,400));
   }
-  return 'unsupported';
+  if(!nativeNotifSupported()) return 'unsupported';
+  return 'default';
 }
 
-async function osSubscribe() {
-  try {
-    if(!window.OneSignal) return false;
-    await window.OneSignal.Notifications.requestPermission();
-    return true;
-  } catch(e) { console.warn('[OneSignal] Subscribe error:', e); return false; }
+async function osSubscribe(){
+  // 1. Siempre pedir permiso nativo primero
+  if(!nativeNotifSupported()) return false;
+  if(Notification.permission==='denied') return false;
+  let perm=Notification.permission;
+  if(perm!=='granted'){
+    perm=await Notification.requestPermission();
+  }
+  if(perm!=='granted') return false;
+  // 2. Si OneSignal está listo, también suscribir para push remoto
+  if(window.OneSignal){
+    try{ await window.OneSignal.Notifications.requestPermission(); }
+    catch(e){ console.warn('[OS] push sub:',e); }
+  }
+  return true;
 }
 
-async function osUnsubscribe() {
-  try {
-    if(!window.OneSignal) return;
-    await window.OneSignal.User.PushSubscription.optOut();
-  } catch(e) { console.warn('[OneSignal] Unsubscribe error:', e); }
+async function osUnsubscribe(){
+  if(window.OneSignal){
+    try{ await window.OneSignal.User.PushSubscription.optOut(); }
+    catch(e){}
+  }
 }
 
-// Enviar notificación de alerta de cobro (REST API de OneSignal)
+// Enviar notificación — Native primero, OneSignal como push remoto
 async function osSendAlert(titulo, mensaje, url) {
-  // keys configured ✓
-  try {
-    // Este endpoint se llama desde el CLIENTE solo para notificaciones propias.
-    // En producción real moverías esto a un backend/Edge Function de Supabase.
-    await fetch('https://onesignal.com/api/v1/notifications', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + ONESIGNAL_REST_KEY,
-      },
-      body: JSON.stringify({
-        app_id: ONESIGNAL_APP_ID,
-        included_segments: ['Subscribed Users'],
-        headings: { es: titulo, en: titulo },
-        contents: { es: mensaje, en: mensaje },
-        url: url || window.location.href,
-        web_push_topic: 'cobro-alert',
-        priority: 10,
-        ttl: 86400,
+  // 1. Notificación nativa inmediata
+  if(nativeNotifSupported()&&Notification.permission==='granted'){
+    try{
+      const n=new Notification(titulo,{body:mensaje,tag:'csj-alert',renotify:true,requireInteraction:false});
+      n.onclick=()=>{window.focus();n.close();};
+    }catch(e){console.warn('[notif]',e);}
+  }
+  // 2. Push remoto via OneSignal (llega aunque la app esté cerrada)
+  try{
+    await fetch('https://onesignal.com/api/v1/notifications',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Basic '+ONESIGNAL_REST_KEY},
+      body:JSON.stringify({
+        app_id:ONESIGNAL_APP_ID,
+        included_segments:['Subscribed Users'],
+        headings:{es:titulo,en:titulo},
+        contents:{es:mensaje,en:mensaje},
+        url:url||window.location.href,
+        web_push_topic:'cobro-alert',priority:10,ttl:86400,
       }),
     });
-  } catch(e) { console.warn('[OneSignal] Send error:', e); }
+  }catch(e){console.warn('[OneSignal push]',e);}
 }
 
   // ── USUARIOS DEL SISTEMA ──────────────────────────────────────
@@ -578,21 +602,20 @@ function NotifButton({perm, onPermChange}){
   const[loading,setLoading]=React.useState(false);
 
   async function toggle(){
-    if(false){ // keys configured ✓
-      alert('⚠ Configura tu App ID y REST API Key de OneSignal (ver guía en el código).');
-      return;
-    }
     setLoading(true);
     if(perm==='granted'){
       await osUnsubscribe();
       onPermChange('default');
+    } else if(perm==='denied'){
+      alert('Las notificaciones están bloqueadas en tu navegador.\n\nPara activarlas:\n→ Chrome: ícono 🔒 en la barra de dirección → Notificaciones → Permitir\n→ Safari iOS: Ajustes → Safari → Notificaciones → Permitir este sitio');
     } else {
-      const ok = await osSubscribe();
-      const newPerm = await osGetPermission();
+      const ok=await osSubscribe();
+      const newPerm=await osGetPermission();
       onPermChange(newPerm);
-      if(ok && newPerm==='granted'){
-        // Test notification
-        await osSendAlert('✅ Crédito San Juan','Notificaciones activadas correctamente');
+      if(ok&&newPerm==='granted'){
+        await osSendAlert('🔔 Crédito San Juan','Notificaciones activadas — recibirás alertas de vencimientos');
+      } else if(!ok){
+        alert('El navegador no abrió el diálogo de permiso.\n\nAsegúrate de:\n1. Abrir la app desde HTTPS (GitHub Pages)\n2. No desde archivo local\n3. Usar Chrome o Safari iOS 16.4+');
       }
     }
     setLoading(false);
@@ -972,10 +995,19 @@ function App(){
           <span style={{fontFamily:"'Fraunces',serif",color:'#fff',fontSize:15,fontWeight:700}}>Crédito San Juan</span>
           {/* Campana en móvil */}
           <button onClick={async()=>{
-            if(notifPerm==='granted'){await osUnsubscribe();setNotifPerm('default');}
-            else{await osSubscribe();const p=await osGetPermission();setNotifPerm(p);if(p==='granted')await osSendAlert('✅ Crédito San Juan','Notificaciones activadas');}
-          }} style={{background:'rgba(255,255,255,.12)',border:'none',color:notifPerm==='granted'?'#7ecabc':'rgba(255,255,255,.7)',borderRadius:6,padding:'6px 11px',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',lineHeight:1}}>
-            {notifPerm==='granted'?'🔔':'🔕'}
+            if(notifPerm==='granted'){
+              await osUnsubscribe(); setNotifPerm('default');
+            } else if(notifPerm==='denied'){
+              alert('Notificaciones bloqueadas.\nActívalas en Configuración del navegador → este sitio → Notificaciones → Permitir');
+            } else {
+              const ok=await osSubscribe();
+              const p=await osGetPermission();
+              setNotifPerm(p);
+              if(ok&&p==='granted') await osSendAlert('🔔 Crédito San Juan','Notificaciones activadas');
+              else if(!ok) alert('Abre la app desde GitHub Pages (HTTPS) para activar notificaciones.\nNo funciona desde archivo local.');
+            }
+          }} style={{background:'rgba(255,255,255,.12)',border:'1px solid rgba(255,255,255,.18)',color:notifPerm==='granted'?'#7ecabc':notifPerm==='denied'?'#ff8a80':'rgba(255,255,255,.75)',borderRadius:6,padding:'6px 11px',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',lineHeight:1}}>
+            {notifPerm==='granted'?'🔔':notifPerm==='denied'?'🚫':'🔕'}
           </button>
         </div>
         {(loading||saving)&&<div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:998,background:'rgba(13,31,13,.55)',display:'flex',alignItems:'center',justifyContent:'center'}}>
