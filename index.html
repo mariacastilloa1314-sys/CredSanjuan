@@ -310,16 +310,29 @@ async function osUnsubscribe(){
   }
 }
 
-// Enviar notificación — Native primero, OneSignal como push remoto
-async function osSendAlert(titulo, mensaje, url) {
-  // 1. Notificación nativa inmediata
-  if(nativeNotifSupported()&&Notification.permission==='granted'){
+// Enviar notificación — SW (Service Worker) + OneSignal REST
+async function osSendAlert(titulo, mensaje, url){
+  let shown=false;
+  // 1. Via Service Worker (funciona en móvil Android e iOS PWA)
+  try{
+    if(navigator.serviceWorker&&navigator.serviceWorker.controller){
+      const reg=await navigator.serviceWorker.ready;
+      await reg.showNotification(titulo,{
+        body:mensaje,tag:'csj-alert',renotify:true,
+        icon:'https://cdn.onesignal.com/sdks/web/v16/assets/icon.png',
+        requireInteraction:false,
+      });
+      shown=true;
+    }
+  }catch(e){console.warn('[SW notif]',e);}
+  // 2. Fallback: native Notification (desktop Chrome)
+  if(!shown&&nativeNotifSupported()&&Notification.permission==='granted'){
     try{
-      const n=new Notification(titulo,{body:mensaje,tag:'csj-alert',renotify:true,requireInteraction:false});
-      n.onclick=()=>{window.focus();n.close();};
-    }catch(e){console.warn('[notif]',e);}
+      new Notification(titulo,{body:mensaje,tag:'csj-alert',renotify:true});
+      shown=true;
+    }catch(e){console.warn('[native notif]',e);}
   }
-  // 2. Push remoto via OneSignal (llega aunque la app esté cerrada)
+  // 3. OneSignal REST — push a todos los suscritos (llega con app cerrada)
   try{
     await fetch('https://onesignal.com/api/v1/notifications',{
       method:'POST',
@@ -333,7 +346,8 @@ async function osSendAlert(titulo, mensaje, url) {
         web_push_topic:'cobro-alert',priority:10,ttl:86400,
       }),
     });
-  }catch(e){console.warn('[OneSignal push]',e);}
+  }catch(e){console.warn('[OS push]',e);}
+  return shown;
 }
 
   // ── USUARIOS DEL SISTEMA ──────────────────────────────────────
@@ -634,22 +648,52 @@ function NotifButton({perm, onPermChange}){
       <span style={{fontSize:9,opacity:.8}}>Actívalas en Configuración del navegador</span>
     </div>
   );
+  const[testMsg,setTestMsg]=React.useState('');
   const isOn=perm==='granted';
+
+  async function probar(){
+    setTestMsg('Enviando...');
+    const shown=await osSendAlert('🔔 Crédito San Juan — Prueba',new Date().toLocaleTimeString('es-PE')+' · Alerta de vencimiento');
+    // Diagnóstico detallado
+    const swOk=!!(navigator.serviceWorker&&navigator.serviceWorker.controller);
+    const osId=window.OneSignal?await window.OneSignal.User.PushSubscription.id.catch(()=>null):null;
+    let msg='';
+    if(shown) msg='✅ Enviada vía '+(swOk?'Service Worker':'navegador');
+    else msg='⚠ No pudo mostrarse localmente';
+    if(osId) msg+=' · OS ID: '+osId.substring(0,8)+'...';
+    else msg+=' · OneSignal: no registrado (¿subiste OneSignalSDKWorker.js?)';
+    setTestMsg(msg);
+    setTimeout(()=>setTestMsg(''),8000);
+  }
+
   return(
-    <button onClick={toggle} disabled={loading} style={{
-      width:'100%',marginTop:8,
-      background:isOn?'rgba(45,138,122,.25)':'rgba(255,255,255,.08)',
-      border:'1.5px solid '+(isOn?'rgba(45,138,122,.5)':'rgba(255,255,255,.18)'),
-      color:isOn?'#7ecabc':'rgba(255,255,255,.7)',
-      borderRadius:7,padding:'8px 10px',fontSize:12,cursor:'pointer',
-      display:'flex',alignItems:'center',justifyContent:'center',gap:7,
-      transition:'all .2s',fontFamily:"'DM Sans',sans-serif",fontWeight:600,
-    }}>
-      {loading
-        ?<span style={{opacity:.6}}>Cargando...</span>
-        :<><span style={{fontSize:14}}>{isOn?'🔔':'🔕'}</span><span>{isOn?'Alertas activas':'Activar alertas'}</span></>
-      }
-    </button>
+    <div style={{marginTop:8}}>
+      <button onClick={toggle} disabled={loading} style={{
+        width:'100%',
+        background:isOn?'rgba(45,138,122,.25)':'rgba(255,255,255,.08)',
+        border:'1.5px solid '+(isOn?'rgba(45,138,122,.5)':'rgba(255,255,255,.18)'),
+        color:isOn?'#7ecabc':'rgba(255,255,255,.7)',
+        borderRadius:7,padding:'8px 10px',fontSize:12,cursor:'pointer',
+        display:'flex',alignItems:'center',justifyContent:'center',gap:7,
+        transition:'all .2s',fontFamily:"'DM Sans',sans-serif",fontWeight:600,
+      }}>
+        {loading?<span style={{opacity:.6}}>Cargando...</span>
+          :<><span style={{fontSize:14}}>{isOn?'🔔':'🔕'}</span>
+            <span>{isOn?'Alertas activas':'Activar alertas'}</span></>}
+      </button>
+      {isOn&&(
+        <button onClick={probar} style={{
+          width:'100%',marginTop:4,background:'transparent',border:'1px solid rgba(255,255,255,.1)',
+          color:'rgba(255,255,255,.4)',borderRadius:6,padding:'5px',fontSize:10,cursor:'pointer',
+          fontFamily:"'DM Sans',sans-serif",
+        }}>Probar notificación</button>
+      )}
+      {testMsg&&(
+        <div style={{marginTop:5,fontSize:9.5,color:'rgba(255,255,255,.55)',lineHeight:1.4,padding:'5px 7px',background:'rgba(255,255,255,.05)',borderRadius:5,wordBreak:'break-word'}}>
+          {testMsg}
+        </div>
+      )}
+    </div>
   );
 }
 
