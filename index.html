@@ -257,12 +257,18 @@ window.OneSignalDeferred.push(async function(OneSignal) {
 });
 
 // Helpers para usar OneSignal desde React
-async function osGetPermission() {
-  try {
-    if(!window.OneSignal) return 'unsupported';
-    const perm = await window.OneSignal.Notifications.permission;
-    return perm ? 'granted' : 'default';
-  } catch(e) { return 'unsupported'; }
+async function osGetPermission(retry=8) {
+  // OneSignal carga con `defer` — esperar hasta 4s a que esté listo
+  for(let i=0;i<retry;i++){
+    if(window.OneSignal){
+      try{
+        const perm=await window.OneSignal.Notifications.permission;
+        return perm?'granted':'default';
+      }catch(e){return 'unsupported';}
+    }
+    await new Promise(r=>setTimeout(r,500));
+  }
+  return 'unsupported';
 }
 
 async function osSubscribe() {
@@ -592,31 +598,34 @@ function NotifButton({perm, onPermChange}){
     setLoading(false);
   }
 
+  // Mientras OneSignal carga (retry en curso) mostrar spinner sutil
   if(perm==='unsupported') return(
-    <div style={{fontSize:9.5,color:'rgba(255,255,255,.3)',textAlign:'center',marginTop:8,padding:'6px 10px',background:'rgba(255,255,255,.04)',borderRadius:6,lineHeight:1.4}}>
+    <div style={{fontSize:10,color:'rgba(255,255,255,.28)',textAlign:'center',marginTop:8,padding:'6px 10px',background:'rgba(255,255,255,.04)',borderRadius:6,lineHeight:1.5}}>
       🔕 Notificaciones no disponibles<br/>
-      <span style={{fontSize:8.5}}>Usa Chrome o Safari (iOS 16.4+)</span>
+      <span style={{fontSize:9,opacity:.7}}>Abre desde Chrome o Safari iOS 16.4+</span>
     </div>
   );
-
-  const isOn = perm==='granted';
+  if(perm==='denied') return(
+    <div style={{fontSize:10,color:'rgba(255,200,100,.55)',textAlign:'center',marginTop:8,padding:'6px 10px',background:'rgba(255,160,0,.07)',borderRadius:6,lineHeight:1.5,border:'1px solid rgba(255,160,0,.15)'}}>
+      🚫 Notificaciones bloqueadas<br/>
+      <span style={{fontSize:9,opacity:.8}}>Actívalas en Configuración del navegador</span>
+    </div>
+  );
+  const isOn=perm==='granted';
   return(
-    <button onClick={toggle} disabled={loading||perm==='denied'} style={{
+    <button onClick={toggle} disabled={loading} style={{
       width:'100%',marginTop:8,
-      background:isOn?'rgba(45,138,122,.22)':'rgba(255,255,255,.06)',
-      border:'1px solid '+(isOn?'rgba(45,138,122,.4)':'rgba(255,255,255,.12)'),
-      color:isOn?'#7ecabc':'rgba(255,255,255,.5)',
-      borderRadius:6,padding:'7px 10px',fontSize:11.5,cursor:'pointer',
+      background:isOn?'rgba(45,138,122,.25)':'rgba(255,255,255,.08)',
+      border:'1.5px solid '+(isOn?'rgba(45,138,122,.5)':'rgba(255,255,255,.18)'),
+      color:isOn?'#7ecabc':'rgba(255,255,255,.7)',
+      borderRadius:7,padding:'8px 10px',fontSize:12,cursor:'pointer',
       display:'flex',alignItems:'center',justifyContent:'center',gap:7,
-      transition:'all .2s',fontFamily:"'DM Sans',sans-serif",
-      opacity:perm==='denied'?.4:1,
+      transition:'all .2s',fontFamily:"'DM Sans',sans-serif",fontWeight:600,
     }}>
-      {loading?'...':(
-        <>
-          <span style={{fontSize:13}}>{isOn?'🔔':'🔕'}</span>
-          <span style={{fontWeight:600}}>{isOn?'Alertas ON':'Activar alertas'}</span>
-        </>
-      )}
+      {loading
+        ?<span style={{opacity:.6}}>Cargando...</span>
+        :<><span style={{fontSize:14}}>{isOn?'🔔':'🔕'}</span><span>{isOn?'Alertas activas':'Activar alertas'}</span></>
+      }
     </button>
   );
 }
@@ -636,12 +645,21 @@ function App(){
   const[dbError,setDbError]=useState(null);// Error visible para debug
   const[notifPerm,setNotifPerm]=useState('default'); // 'default'|'granted'|'denied'|'unsupported'
 
-  // Chequear estado de permisos al cargar
+  // Chequear estado de permisos al cargar (con retry integrado en osGetPermission)
   useEffect(()=>{
     (async()=>{
-      const perm = await osGetPermission();
+      const perm=await osGetPermission();
       setNotifPerm(perm);
     })();
+    // Re-chequear cuando el usuario vuelve a la pestaña
+    const onVisible=async()=>{
+      if(document.visibilityState==='visible'){
+        const p=await osGetPermission(2);// solo 2 intentos rápidos
+        setNotifPerm(p);
+      }
+    };
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>document.removeEventListener('visibilitychange',onVisible);
   },[]);
 
   useEffect(()=>{
@@ -952,7 +970,13 @@ function App(){
         <div className="mob-bar">
           <button onClick={()=>setMob(true)} style={{background:'rgba(255,255,255,.12)',border:'none',color:'#fff',borderRadius:6,padding:'6px 12px',fontSize:13,cursor:'pointer'}}>☰</button>
           <span style={{fontFamily:"'Fraunces',serif",color:'#fff',fontSize:15,fontWeight:700}}>Crédito San Juan</span>
-          <div style={{width:40}}/>
+          {/* Campana en móvil */}
+          <button onClick={async()=>{
+            if(notifPerm==='granted'){await osUnsubscribe();setNotifPerm('default');}
+            else{await osSubscribe();const p=await osGetPermission();setNotifPerm(p);if(p==='granted')await osSendAlert('✅ Crédito San Juan','Notificaciones activadas');}
+          }} style={{background:'rgba(255,255,255,.12)',border:'none',color:notifPerm==='granted'?'#7ecabc':'rgba(255,255,255,.7)',borderRadius:6,padding:'6px 11px',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',lineHeight:1}}>
+            {notifPerm==='granted'?'🔔':'🔕'}
+          </button>
         </div>
         {(loading||saving)&&<div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:998,background:'rgba(13,31,13,.55)',display:'flex',alignItems:'center',justifyContent:'center'}}>
           <div style={{background:'#fff',borderRadius:14,padding:'32px 40px',textAlign:'center',boxShadow:'0 12px 40px rgba(0,0,0,.25)',maxWidth:360}}>
