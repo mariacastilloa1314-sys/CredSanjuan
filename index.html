@@ -233,8 +233,8 @@ const SURL='https://wimkawjgvzcspcxyyibc.supabase.co';
 const SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpbWthd2pndnpjc3BjeHl5aWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MjU3NjUsImV4cCI6MjA4ODMwMTc2NX0.B3p0Bb3s7Fi5y0goUk2IX8e86_PFfyT99OY07Y_wq18';
 
 // ── OneSignal — reemplaza TU_APP_ID con el que te da OneSignal ──
-const ONESIGNAL_APP_ID  = 'TU_APP_ID_AQUI';   // ← PASO 3: pega tu App ID
-const ONESIGNAL_REST_KEY = 'TU_REST_API_KEY';  // ← PASO 4: pega tu REST API Key
+const ONESIGNAL_APP_ID  = '631cc536-b5bf-4241-8e1b-af8d3e61850b';
+const ONESIGNAL_REST_KEY = 'os_v2_app_mmomknvvx5beddq3v6gt4ymfbmr2im6kvequ5pnap4yrqki4e2evjcql6p7ipkwf2yb2ie4syk52mxdg773qqu4y4q45f4nfcacao7y';
 
 // Inicializar OneSignal cuando el DOM esté listo
 window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -282,7 +282,7 @@ async function osUnsubscribe() {
 
 // Enviar notificación de alerta de cobro (REST API de OneSignal)
 async function osSendAlert(titulo, mensaje, url) {
-  if(ONESIGNAL_APP_ID==='TU_APP_ID_AQUI'||ONESIGNAL_REST_KEY==='TU_REST_API_KEY') return;
+  // keys configured ✓
   try {
     // Este endpoint se llama desde el CLIENTE solo para notificaciones propias.
     // En producción real moverías esto a un backend/Edge Function de Supabase.
@@ -572,7 +572,7 @@ function NotifButton({perm, onPermChange}){
   const[loading,setLoading]=React.useState(false);
 
   async function toggle(){
-    if(ONESIGNAL_APP_ID==='TU_APP_ID_AQUI'||ONESIGNAL_REST_KEY==='TU_REST_API_KEY'){
+    if(false){ // keys configured ✓
       alert('⚠ Configura tu App ID y REST API Key de OneSignal (ver guía en el código).');
       return;
     }
