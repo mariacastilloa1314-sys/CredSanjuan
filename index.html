@@ -310,43 +310,53 @@ async function osUnsubscribe(){
   }
 }
 
-// Enviar notificación — SW (Service Worker) + OneSignal REST
+// Enviar notificación — SW primero, native fallback, OS fire-and-forget
 async function osSendAlert(titulo, mensaje, url){
   let shown=false;
-  // 1. Via Service Worker (funciona en móvil Android e iOS PWA)
+
+  // 1. Service Worker (móvil Android + iOS PWA)
   try{
-    if(navigator.serviceWorker&&navigator.serviceWorker.controller){
-      const reg=await navigator.serviceWorker.ready;
-      await reg.showNotification(titulo,{
-        body:mensaje,tag:'csj-alert',renotify:true,
-        icon:'https://cdn.onesignal.com/sdks/web/v16/assets/icon.png',
-        requireInteraction:false,
-      });
-      shown=true;
+    if(navigator.serviceWorker){
+      const reg=await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((_,r)=>setTimeout(()=>r(new Error('SW timeout')),2000))
+      ]);
+      if(reg&&reg.showNotification){
+        await reg.showNotification(titulo,{
+          body:mensaje, tag:'csj-alert', renotify:true, requireInteraction:false,
+          icon:'https://cdn.onesignal.com/sdks/web/v16/assets/icon.png',
+        });
+        shown=true;
+      }
     }
-  }catch(e){console.warn('[SW notif]',e);}
-  // 2. Fallback: native Notification (desktop Chrome)
-  if(!shown&&nativeNotifSupported()&&Notification.permission==='granted'){
+  }catch(e){console.warn('[SW]',e.message);}
+
+  // 2. Native Notification API (desktop Chrome/Firefox)
+  if(!shown && nativeNotifSupported() && Notification.permission==='granted'){
     try{
       new Notification(titulo,{body:mensaje,tag:'csj-alert',renotify:true});
       shown=true;
-    }catch(e){console.warn('[native notif]',e);}
+    }catch(e){console.warn('[native]',e);}
   }
-  // 3. OneSignal REST — push a todos los suscritos (llega con app cerrada)
-  try{
-    await fetch('https://onesignal.com/api/v1/notifications',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Basic '+ONESIGNAL_REST_KEY},
-      body:JSON.stringify({
-        app_id:ONESIGNAL_APP_ID,
-        included_segments:['Subscribed Users'],
-        headings:{es:titulo,en:titulo},
-        contents:{es:mensaje,en:mensaje},
-        url:url||window.location.href,
-        web_push_topic:'cobro-alert',priority:10,ttl:86400,
-      }),
-    });
-  }catch(e){console.warn('[OS push]',e);}
+
+  // 3. OneSignal REST — fire and forget, SIN await para no bloquear la UI
+  //    El navegador puede bloquear esto por CORS — no es crítico para la UX
+  const ctrl=new AbortController();
+  setTimeout(()=>ctrl.abort(),5000);
+  fetch('https://onesignal.com/api/v1/notifications',{
+    method:'POST', signal:ctrl.signal,
+    headers:{'Content-Type':'application/json','Authorization':'Basic '+ONESIGNAL_REST_KEY},
+    body:JSON.stringify({
+      app_id:ONESIGNAL_APP_ID,
+      included_segments:['Subscribed Users'],
+      headings:{es:titulo,en:titulo},
+      contents:{es:mensaje,en:mensaje},
+      url:url||window.location.href,
+      web_push_topic:'cobro-alert',priority:10,ttl:86400,
+    }),
+  }).catch(e=>console.warn('[OS push]',e.message));
+  // No awaiteamos — retorna inmediatamente
+
   return shown;
 }
 
@@ -627,9 +637,9 @@ function NotifButton({perm, onPermChange}){
       const newPerm=await osGetPermission();
       onPermChange(newPerm);
       if(ok&&newPerm==='granted'){
-        await osSendAlert('🔔 Crédito San Juan','Notificaciones activadas — recibirás alertas de vencimientos');
+        osSendAlert('🔔 Crédito San Juan','Alertas activadas ✅'); // sin await — no bloquea UI
       } else if(!ok){
-        alert('El navegador no abrió el diálogo de permiso.\n\nAsegúrate de:\n1. Abrir la app desde HTTPS (GitHub Pages)\n2. No desde archivo local\n3. Usar Chrome o Safari iOS 16.4+');
+        alert('El navegador no abrió el diálogo.\nVerifica:\n1. Abrir desde HTTPS (GitHub Pages)\n2. No desde archivo local\n3. Chrome o Safari iOS 16.4+');
       }
     }
     setLoading(false);
@@ -652,18 +662,32 @@ function NotifButton({perm, onPermChange}){
   const isOn=perm==='granted';
 
   async function probar(){
-    setTestMsg('Enviando...');
-    const shown=await osSendAlert('🔔 Crédito San Juan — Prueba',new Date().toLocaleTimeString('es-PE')+' · Alerta de vencimiento');
-    // Diagnóstico detallado
-    const swOk=!!(navigator.serviceWorker&&navigator.serviceWorker.controller);
-    const osId=window.OneSignal?await window.OneSignal.User.PushSubscription.id.catch(()=>null):null;
-    let msg='';
-    if(shown) msg='✅ Enviada vía '+(swOk?'Service Worker':'navegador');
-    else msg='⚠ No pudo mostrarse localmente';
-    if(osId) msg+=' · OS ID: '+osId.substring(0,8)+'...';
-    else msg+=' · OneSignal: no registrado (¿subiste OneSignalSDKWorker.js?)';
-    setTestMsg(msg);
-    setTimeout(()=>setTestMsg(''),8000);
+    setTestMsg('⏳ Probando...');
+    // Diagnóstico rápido ANTES de enviar
+    const swCtrl=!!(navigator.serviceWorker&&navigator.serviceWorker.controller);
+    const swSupp=!!navigator.serviceWorker;
+    const natPerm=nativeNotifSupported()?Notification.permission:'no soportado';
+    let osId=null;
+    try{ if(window.OneSignal) osId=await Promise.race([
+      window.OneSignal.User.PushSubscription.id,
+      new Promise(r=>setTimeout(()=>r(null),1500))
+    ]);}catch(e){}
+
+    // Disparar notificación (no bloqueante)
+    const shown=await osSendAlert(
+      '🔔 Crédito San Juan',
+      '✅ Prueba — '+new Date().toLocaleTimeString('es-PE')
+    );
+
+    // Mostrar diagnóstico claro
+    const lines=[];
+    if(shown)  lines.push('✅ Notificación mostrada');
+    else       lines.push('⚠ No apareció en pantalla');
+    lines.push('SW activo: '+(swCtrl?'✅ sí':'❌ no'+(swSupp?', OneSignalSDKWorker.js no registrado':'')));
+    lines.push('Permiso: '+natPerm);
+    lines.push('OneSignal ID: '+(osId?osId.substring(0,12)+'...':'❌ sin registro — verifica el Worker'));
+    setTestMsg(lines.join(' · '));
+    setTimeout(()=>setTestMsg(''),12000);
   }
 
   return(
@@ -1042,13 +1066,12 @@ function App(){
             if(notifPerm==='granted'){
               await osUnsubscribe(); setNotifPerm('default');
             } else if(notifPerm==='denied'){
-              alert('Notificaciones bloqueadas.\nActívalas en Configuración del navegador → este sitio → Notificaciones → Permitir');
+              alert('Notificaciones bloqueadas.\nActívalas en: ícono 🔒 en la barra de dirección → Notificaciones → Permitir');
             } else {
               const ok=await osSubscribe();
               const p=await osGetPermission();
               setNotifPerm(p);
-              if(ok&&p==='granted') await osSendAlert('🔔 Crédito San Juan','Notificaciones activadas');
-              else if(!ok) alert('Abre la app desde GitHub Pages (HTTPS) para activar notificaciones.\nNo funciona desde archivo local.');
+              if(ok&&p==='granted') osSendAlert('🔔 Crédito San Juan','Alertas activadas ✅'); // sin await
             }
           }} style={{background:'rgba(255,255,255,.12)',border:'1px solid rgba(255,255,255,.18)',color:notifPerm==='granted'?'#7ecabc':notifPerm==='denied'?'#ff8a80':'rgba(255,255,255,.75)',borderRadius:6,padding:'6px 11px',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',lineHeight:1}}>
             {notifPerm==='granted'?'🔔':notifPerm==='denied'?'🚫':'🔕'}
@@ -1124,9 +1147,9 @@ async function checkAndFireAlerts(loans, sched) {
     mensaje=`${ns.join(', ')}${proxList.length>2?` y ${proxList.length-2} más`:''} — próximos 3 días`;
   }
   if(titulo){
-    await osSendAlert(titulo,mensaje);
+    osSendAlert(titulo,mensaje); // sin await — no bloquea la carga de datos
     localStorage.setItem(THROTTLE_KEY,String(ahora));
-    console.log('[CSJ] Alerta push enviada:',titulo);
+    console.log('[CSJ] Alerta disparada:',titulo);
   }
 }
 // ════════════════════════════════════════════════════════════════
