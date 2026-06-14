@@ -232,9 +232,10 @@ tfoot td{padding:10px 13px;background:var(--light);font-weight:700;color:var(--d
 const SURL='https://wimkawjgvzcspcxyyibc.supabase.co';
 const SKEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpbWthd2pndnpjc3BjeHl5aWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MjU3NjUsImV4cCI6MjA4ODMwMTc2NX0.B3p0Bb3s7Fi5y0goUk2IX8e86_PFfyT99OY07Y_wq18';
 
-// ── OneSignal — reemplaza TU_APP_ID con el que te da OneSignal ──
+// ── OneSignal ──
+// El App ID es público (no es secreto). La REST API Key NUNCA debe estar
+// aquí: vive solo en GitHub Secrets y la usa el GitHub Action del servidor.
 const ONESIGNAL_APP_ID  = '631cc536-b5bf-4241-8e1b-af8d3e61850b';
-const ONESIGNAL_REST_KEY = 'os_v2_app_mmomknvvx5beddq3v6gt4ymfbmr2im6kvequ5pnap4yrqki4e2evjcql6p7ipkwf2yb2ie4syk52mxdg773qqu4y4q45f4nfcacao7y';
 
 // Inicializar OneSignal cuando el DOM esté listo
 window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -242,6 +243,11 @@ window.OneSignalDeferred.push(async function(OneSignal) {
   try {
     await OneSignal.init({
       appId: ONESIGNAL_APP_ID,
+      // El sitio está en el subdirectorio /CredSanjuan/ de GitHub Pages,
+      // así que hay que decirle a OneSignal dónde está el Service Worker.
+      // Sin esto, lo busca en la raíz del dominio y falla en silencio.
+      serviceWorkerPath: 'CredSanjuan/OneSignalSDKWorker.js',
+      serviceWorkerParam: { scope: '/CredSanjuan/' },
       notifyButton: { enable: false }, // usamos nuestro propio botón
       welcomeNotification: {
         title: 'Crédito San Juan',
@@ -339,23 +345,11 @@ async function osSendAlert(titulo, mensaje, url){
     }catch(e){console.warn('[native]',e);}
   }
 
-  // 3. OneSignal REST — fire and forget, SIN await para no bloquear la UI
-  //    El navegador puede bloquear esto por CORS — no es crítico para la UX
-  const ctrl=new AbortController();
-  setTimeout(()=>ctrl.abort(),5000);
-  fetch('https://onesignal.com/api/v1/notifications',{
-    method:'POST', signal:ctrl.signal,
-    headers:{'Content-Type':'application/json','Authorization':'Basic '+ONESIGNAL_REST_KEY},
-    body:JSON.stringify({
-      app_id:ONESIGNAL_APP_ID,
-      included_segments:['Subscribed Users'],
-      headings:{es:titulo,en:titulo},
-      contents:{es:mensaje,en:mensaje},
-      url:url||window.location.href,
-      web_push_topic:'cobro-alert',priority:10,ttl:86400,
-    }),
-  }).catch(e=>console.warn('[OS push]',e.message));
-  // No awaiteamos — retorna inmediatamente
+  // NOTA: el push remoto (cuando la app está cerrada) ahora lo envía el
+  // servidor — el GitHub Action que corre a diario y llama a la API REST de
+  // OneSignal con la llave secreta. El navegador NO debe enviar broadcasts
+  // (lo bloquea CORS y expondría la llave). Aquí solo mostramos avisos locales
+  // mientras la app está abierta.
 
   return shown;
 }
