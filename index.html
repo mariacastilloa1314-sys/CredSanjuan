@@ -303,7 +303,15 @@ async function osSubscribe(){
   if(perm!=='granted') return false;
   // 2. Si OneSignal está listo, también suscribir para push remoto
   if(window.OneSignal){
-    try{ await window.OneSignal.Notifications.requestPermission(); }
+    try{
+      await window.OneSignal.Notifications.requestPermission();
+      // Asegurar OPT-IN: revierte un opt-out previo. Sin esto, un dispositivo
+      // que alguna vez apagó las alertas queda "no suscrito" para el servidor
+      // aunque tenga ID y permiso concedido.
+      if(window.OneSignal.User&&window.OneSignal.User.PushSubscription&&window.OneSignal.User.PushSubscription.optIn){
+        await window.OneSignal.User.PushSubscription.optIn();
+      }
+    }
     catch(e){ console.warn('[OS] push sub:',e); }
   }
   return true;
