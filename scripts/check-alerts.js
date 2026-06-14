@@ -105,7 +105,7 @@ async function sendPush(heading, content) {
 
   console.log(`   Vencen HOY: ${venceHoy.length} | En mora: ${vencidas.length}`);
 
-  // 1) Cuotas que vencen HOY (lo que pediste: alerta el mismo día)
+  // Cuotas que vencen HOY (lo que pediste: alerta solo el mismo día)
   if (venceHoy.length > 0) {
     const monto = venceHoy.reduce((a, c) => a + saldo(c), 0);
     const ns = nombres(venceHoy);
@@ -115,19 +115,7 @@ async function sendPush(heading, content) {
       `🔴 ${venceHoy.length} cuota${plural ? 's' : ''} vence${plural ? 'n' : ''} HOY`,
       `${ns.join(', ')}${extra} · ${fmt(monto)}`,
     );
-  }
-
-  // 2) Cuotas ya vencidas (mora) — recordatorio de cobranza
-  if (vencidas.length > 0) {
-    const monto = vencidas.reduce((a, c) => a + saldo(c), 0);
-    const plural = vencidas.length > 1;
-    await sendPush(
-      `⚫ ${vencidas.length} cuota${plural ? 's' : ''} en mora`,
-      `Total vencido: ${fmt(monto)} — cobrar cuanto antes`,
-    );
-  }
-
-  if (venceHoy.length === 0 && vencidas.length === 0) {
-    console.log('✅ Nada que notificar hoy.');
+  } else {
+    console.log('✅ Nada vence hoy.');
   }
 })().catch(e => { console.error('❌ Error:', e.message); process.exit(1); });
