@@ -2,10 +2,8 @@ name: Alertas de vencimiento
 
 on:
   schedule:
-    # 13:00 UTC = 08:00 hora de Perú (UTC-5). Cámbialo a la hora que quieras.
-    # Formato: minuto hora * * *   (siempre en UTC)
     - cron: '0 13 * * *'
-  workflow_dispatch: {}   # permite ejecutarlo a mano desde la pestaña Actions (para probar)
+  workflow_dispatch:
 
 jobs:
   alertas:
@@ -19,8 +17,8 @@ jobs:
 
       - name: Revisar vencimientos y enviar push
         env:
-          SUPABASE_URL:       ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY:       ${{ secrets.SUPABASE_KEY }}
-          ONESIGNAL_APP_ID:   ${{ secrets.ONESIGNAL_APP_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
           ONESIGNAL_REST_KEY: ${{ secrets.ONESIGNAL_REST_KEY }}
         run: node scripts/check-alerts.js
