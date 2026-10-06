@@ -5,6 +5,10 @@ on:
     - cron: '0 13 * * *'
   workflow_dispatch:
 
+# Permite que el workflow escriba en el repo (para el commit de mantenimiento)
+permissions:
+  contents: write
+
 jobs:
   alertas:
     runs-on: ubuntu-latest
@@ -22,3 +26,15 @@ jobs:
           ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
           ONESIGNAL_REST_KEY: ${{ secrets.ONESIGNAL_REST_KEY }}
         run: node scripts/check-alerts.js
+
+      # Mantenimiento: deja constancia de la última corrida y hace un commit.
+      # Ese commit cuenta como "actividad" para GitHub, así nunca desactiva
+      # el workflow automático por inactividad (regla de los 60 días).
+      - name: Mantener el workflow activo
+        run: |
+          echo "Última corrida: $(date -u '+%Y-%m-%d %H:%M UTC')" > .ultima-corrida
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .ultima-corrida
+          git commit -m "Mantenimiento automático: $(date -u '+%Y-%m-%d')" || echo "Sin cambios que commitear"
+          git push || echo "Nada que subir"
